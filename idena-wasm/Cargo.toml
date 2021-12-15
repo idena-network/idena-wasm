@@ -1,0 +1,35 @@
+[package]
+name = "idena-wasm"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+crate-type = ["cdylib"]
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[[example]]
+name = "muslc"
+path = "src/lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+anyhow = "1.0"
+wat = "1.0"
+thiserror = "1.0"
+wasmer = { version = "2.1.0", default-features = false, features = ["cranelift", "universal", "singlepass"] }
+wasmer-middlewares = { version = "2.1.0" }
+wasmer-engine-universal = { version = "2.1.0" }
+wasmer-runtime-core = { version="0.17.1" }
+
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = true
+lto = false
+debug-assertions = false
+codegen-units = 16
+panic = 'unwind'
+incremental = true
+overflow-checks = true
