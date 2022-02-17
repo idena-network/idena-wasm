@@ -1,9 +1,17 @@
-use std::{mem, slice};
+use std::{mem, slice, str};
 
-use crate::backend::{Address, Backend, BackendError, BackendResult};
+use errno::{Errno, set_errno};
+
+use crate::backend::{Address, Backend, BackendError, BackendResult, IDNA};
 use crate::environment::Env;
+use crate::errors::VmError;
 use crate::memory::ByteSliceView;
 use crate::runner::VmRunner;
+
+#[repr(C)]
+pub struct gas_meter_t {
+    _private: [u8; 0],
+}
 
 #[repr(C)]
 pub struct api_t {
@@ -13,6 +21,10 @@ pub struct api_t {
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct GoApi_vtable {
+    pub set_remaining_gas: extern "C" fn(
+        *const api_t,
+        u64,
+    ) -> i32,
     pub set_storage: extern "C" fn(
         *const api_t,
         U8SliceView,
@@ -33,19 +45,88 @@ pub struct GoApi_vtable {
     pub block_number: extern "C" fn(
         *const api_t,
         *mut u64,
-        &mut u64, // result output
+        *mut u64, // result output
     ) -> i32,
     pub block_timestamp: extern "C" fn(
         *const api_t,
         *mut u64,
-        &mut i64, // result output
+        *mut i64, // result output
     ) -> i32,
     pub send: extern "C" fn(
         *const api_t,
-        U8SliceView,
+        U8SliceView, // to
+        U8SliceView, // amount
         *mut u64,
         *mut UnmanagedVector, // error
     ) -> i32,
+    pub min_fee_per_gas: extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub balance: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub block_seed: extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub network_size: extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut u64, // result
+    ) -> i32,
+    pub identity_state: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        *mut u64,
+        *mut u8,
+    ) -> i32,
+    pub pub_key: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub burn_all: extern "C" fn(
+        *const api_t,
+        *mut u64,
+    ) -> i32,
+    pub read_contract_data: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        U8SliceView, // key
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub epoch: extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut u16,
+    ) -> i32,
+    pub contract_stake: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub move_to_stake: extern "C" fn(
+        *const api_t,
+        U8SliceView, // amount
+        *mut u64,
+        *mut UnmanagedVector, // output error
+    ) -> i32,
+    pub delegatee: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+
 }
 
 #[repr(C)]
@@ -130,6 +211,11 @@ impl UnmanagedVector {
     }
 }
 
+#[no_mangle]
+pub extern "C" fn destroy_unmanaged_vector(v: UnmanagedVector) {
+    let _ = v.consume();
+}
+
 impl Default for UnmanagedVector {
     fn default() -> Self {
         Self::new(None)
@@ -157,6 +243,7 @@ pub extern "C" fn new_unmanaged_vector(
 #[derive(Copy, Clone)]
 pub struct GoApi {
     pub state: *const api_t,
+    pub gasMeter: *const gas_meter_t,
     pub vtable: GoApi_vtable,
 }
 
@@ -183,40 +270,233 @@ impl Clone for apiWrapper {
 }
 
 impl Backend for apiWrapper {
+    fn set_remaining_gas(&self, gasLimit: u64) -> BackendResult<()> {
+        let go_result = (self.api.vtable.set_remaining_gas)(self.api.state, gasLimit);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), 0);
+        }
+        (Ok(()), 0)
+    }
+
     fn set_storage(&self, key: Vec<u8>, value: Vec<u8>) -> BackendResult<()> {
         let mut used_gas = 0_u64;
-        let goResult = (self.api.vtable.set_storage)(self.api.state, U8SliceView::new(Some(&key)), U8SliceView::new(Some(&value)), &mut used_gas as *mut u64,);
-        if goResult != 0 {
+        let go_result = (self.api.vtable.set_storage)(self.api.state, U8SliceView::new(Some(&key)), U8SliceView::new(Some(&value)), &mut used_gas as *mut u64);
+        if go_result != 0 {
             return (Err(BackendError::new("backend error")), used_gas);
         }
+        println!("set storage used gas {}", used_gas);
         (Ok(()), used_gas)
     }
 
-    fn get_storage(&self, env: &Env<Self>, key: Vec<u8>) -> BackendResult<Option<Vec<u8>>> {
+    fn get_storage(&self, key: Vec<u8>) -> BackendResult<Option<Vec<u8>>> {
         let mut data = UnmanagedVector::default();
         let mut used_gas = 0_u64;
-        let goResult = (self.api.vtable.get_storage)(self.api.state, U8SliceView::new(Some(&key)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
-        if goResult != 0 {
-           return (Err(BackendError::new("backend error")), used_gas);
+        let go_result = (self.api.vtable.get_storage)(self.api.state, U8SliceView::new(Some(&key)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
         }
         let result = data.consume();
         (Ok(result), used_gas)
     }
 
-    fn remove_storage(&self, env: &Env<Self>, key: Vec<u8>) -> BackendResult<()> {
-        todo!()
+    fn send(&self, to: Address, amount: Vec<u8>) -> BackendResult<()> {
+        let mut err = UnmanagedVector::default();
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.send)(self.api.state, U8SliceView::new(Some(&to)), U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64, &mut err as *mut UnmanagedVector);
+        if go_result != 0 {
+            let err_data = match err.consume() {
+                Some(v) => v,
+                None => Vec::new()
+            };
+            let s = match String::from_utf8(err_data) {
+                Ok(v) => v,
+                Err(e) => "cannot parse backend error".to_string(),
+            };
+            return (Err(BackendError::new(format!("backend error: {}", s))), used_gas);
+        }
+        (Ok(()), used_gas)
     }
 
-    fn block_timestamp(&self, env: &Env<Self>) -> BackendResult<i64> {
-        todo!()
+    fn remove_storage(&self, key: Vec<u8>) -> BackendResult<()> {
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.remove_storage)(self.api.state, U8SliceView::new(Some(&key)), &mut used_gas as *mut u64);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(()), used_gas)
     }
 
-    fn block_number(&self, env: &Env<Self>) -> BackendResult<u64> {
-        todo!()
+    fn block_timestamp(&self) -> BackendResult<i64> {
+        let mut timestamp = 0_i64;
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.block_timestamp)(self.api.state, &mut used_gas as *mut u64, &mut timestamp as *mut i64);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        return (Ok(timestamp), used_gas);
     }
 
-    fn send(&self, env: &Env<Self>, to: Address) -> BackendResult<()> {
-        todo!()
+    fn block_number(&self) -> BackendResult<u64> {
+        let mut height = 0_u64;
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.block_number)(self.api.state, &mut used_gas as *mut u64, &mut height as *mut u64);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        return (Ok(height), used_gas);
+    }
+
+    fn min_fee_per_gas(&self) -> BackendResult<IDNA> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.min_fee_per_gas)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+
+        let v = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(v), used_gas)
+    }
+
+    fn balance(&self, addr: Address) -> BackendResult<IDNA> {
+        let mut used_gas = 0_u64;
+        let mut balance = UnmanagedVector::default();
+        let go_result = (self.api.vtable.balance)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut balance as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        let amount = match balance.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(amount), used_gas)
+    }
+
+    fn block_seed(&self) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.block_seed)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        let seed = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(seed), used_gas)
+    }
+
+    fn network_size(&self) -> BackendResult<u64> {
+        let mut used_gas = 0_u64;
+        let mut network_size = 0_u64;
+        let go_result = (self.api.vtable.network_size)(self.api.state, &mut used_gas as *mut u64, &mut network_size as *mut u64);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(network_size), used_gas)
+    }
+
+    fn identity_state(&self, addr: Address) -> BackendResult<u8> {
+        let mut used_gas = 0_u64;
+        let mut state = 0_u8;
+        let go_result = (self.api.vtable.identity_state)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut state as *mut u8);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(state), used_gas)
+    }
+
+    fn pub_key(&self, addr: Address) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.pub_key)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        let pub_key = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(pub_key), used_gas)
+    }
+
+    fn burn_all(&self) -> BackendResult<()> {
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.burn_all)(self.api.state, &mut used_gas as *mut u64);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(()), used_gas)
+    }
+
+    fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.read_contract_data)(self.api.state, U8SliceView::new(Some(&addr)), U8SliceView::new(Some(&key)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        let d = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(d), used_gas)
+    }
+
+    fn epoch(&self) -> BackendResult<u16> {
+        let mut used_gas = 0_u64;
+        let mut epoch = 0_u16;
+        let go_result = (self.api.vtable.epoch)(self.api.state, &mut used_gas as *mut u64, &mut epoch as *mut u16);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(epoch), used_gas)
+    }
+
+    fn contract_stake(&self, addr: Address) -> BackendResult<IDNA> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.contract_stake)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        let stake = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(stake), used_gas)
+    }
+
+    fn move_to_stake(&self, amount: IDNA) -> BackendResult<()> {
+        let mut used_gas = 0_u64;
+        let mut err_data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.move_to_stake)(self.api.state, U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64, &mut err_data as *mut UnmanagedVector);
+        if go_result != 0 {
+            let err_data = match err_data.consume() {
+                Some(v) => v,
+                None => Vec::new()
+            };
+            let s = match String::from_utf8(err_data) {
+                Ok(v) => v,
+                Err(e) => "cannot parse backend error".to_string(),
+            };
+            return (Err(BackendError::new(format!("backend error: {}", s))), used_gas);
+        }
+
+        (Ok(()), used_gas)
+    }
+
+    fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.delegatee)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(data.consume()), used_gas)
     }
 }
 
@@ -226,8 +506,27 @@ unsafe impl Sync for apiWrapper {}
 
 
 #[no_mangle]
-pub extern "C" fn execute(api: GoApi, code: ByteSliceView) -> i32 {
+pub extern "C" fn execute(api: GoApi, code: ByteSliceView, err_msg: Option<&mut UnmanagedVector>) {
     let data: Vec<u8> = code.read().unwrap().into();
-    VmRunner::execute(apiWrapper::new(api), data).unwrap();
-    return 0;
+    match VmRunner::execute(apiWrapper::new(api), data) {
+        Ok(_) => set_errno(Errno(0)),
+        Err(err) => {
+            if let Some(err_msg) = err_msg {
+                if err_msg.is_some() {
+                    panic!(
+                        "There is an old error message in the given pointer that has not been \
+                cleaned up. Error message pointers should not be reused for multiple calls."
+                    )
+                }
+                *err_msg = UnmanagedVector::new(Some(err.to_string().into()));
+            } else {
+                // The caller provided a nil pointer for the error message.
+                // That's not nice but we can live with it.
+            }
+            match err {
+                VmError::Custom { msg } => set_errno(Errno(1)),
+                VmError::OutOfGas => set_errno(Errno(2)),
+            }
+        }
+    }
 }

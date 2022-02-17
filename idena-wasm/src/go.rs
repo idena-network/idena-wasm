@@ -81,11 +81,11 @@ impl GoResult {
 
         match self {
             GoResult::Ok => Ok(()),
-            GoResult::Panic => Err(VmError::new("foreign_panic")),
-            GoResult::BadArgument => Err(VmError::new("bad_argument")),
-            GoResult::OutOfGas => Err(VmError::new("out_of_gas()")),
-            GoResult::Other => Err(VmError::new("unknown(read_error_msg")),
-            GoResult::User => Err(VmError::new("user_err(read_error_msg")),
+            GoResult::Panic => Err(VmError::custom("foreign_panic")),
+            GoResult::BadArgument => Err(VmError::custom("bad_argument")),
+            GoResult::OutOfGas => Err(VmError::custom("out_of_gas()")),
+            GoResult::Other => Err(VmError::custom("unknown(read_error_msg")),
+            GoResult::User => Err(VmError::custom("user_err(read_error_msg")),
         }
     }
 }

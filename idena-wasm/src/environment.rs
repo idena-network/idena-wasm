@@ -3,15 +3,19 @@ use std::error::Error;
 use std::ptr::NonNull;
 use std::sync::{Arc, RwLock};
 
-use wasmer::{HostEnvInitError, Instance, Memory, WasmerEnv};
+use wasmer::{HostEnvInitError, Instance, Memory, Val, WasmerEnv};
+use wasmer_middlewares::metering::{get_remaining_points, MeteringPoints, set_remaining_points};
 
 use crate::backend::Backend;
 use crate::errors;
 use crate::errors::VmError;
 use crate::memory::VmResult;
 
+#[derive(Debug)]
+pub enum Never {}
+
 pub struct Env<B: Backend> {
-    pub backend: Option<B>,
+    pub backend: B,
     data: Arc<RwLock<ContextData>>,
 }
 
@@ -19,7 +23,7 @@ pub struct Env<B: Backend> {
 impl<B: Backend> Env<B> {
     pub fn new(api: B) -> Self {
         Env {
-            backend: Some(api),
+            backend: api,
             data: Arc::new(RwLock::new(ContextData::new())),
         }
     }
@@ -57,8 +61,26 @@ impl<B: Backend> Env<B> {
                 let instance_ref = unsafe { instance_ptr.as_ref() };
                 callback(instance_ref)
             }
-            None => Err(VmError::new("uninitialized wasmer instance")),
+            None => Err(VmError::custom("uninitialized wasmer instance")),
         })
+    }
+
+    pub fn get_gas_left(&self) -> u64 {
+        self.with_wasmer_instance(|instance| {
+            Ok(match get_remaining_points(instance) {
+                MeteringPoints::Remaining(count) => count,
+                MeteringPoints::Exhausted => 0,
+            })
+        })
+            .expect("Wasmer instance is not set. This is a bug in the lifecycle.")
+    }
+
+    pub fn set_gas_left(&self, new_value: u64) {
+        self.with_wasmer_instance(|instance| {
+            set_remaining_points(instance, new_value);
+            Ok(())
+        })
+            .expect("Wasmer instance is not set. This is a bug in the lifecycle.")
     }
 
     pub fn memory(&self) -> Memory {
@@ -78,6 +100,34 @@ impl<B: Backend> Env<B> {
             Ok(memory)
         })
             .expect("Wasmer instance is not set. This is a bug in the lifecycle.")
+    }
+
+    fn call_function(&self, name: &str, args: &[Val]) -> VmResult<Box<[Val]>> {
+        // Clone function before calling it to avoid dead locks
+        let func = self.with_wasmer_instance(|instance| {
+            let func = instance.exports.get_function(name)?;
+            Ok(func.clone())
+        })?;
+        func.call(args).map_err(|runtime_err| -> VmError {
+            self.with_wasmer_instance::<_, Never>(|instance| {
+                let err: VmError = match get_remaining_points(instance) {
+                    MeteringPoints::Remaining(_) => VmError::custom(runtime_err.to_string()),
+                    MeteringPoints::Exhausted => VmError::custom("Ran out of gas during contract execution"),
+                };
+                Err(err)
+            })
+                .unwrap_err() // with_wasmer_instance can only succeed if the callback succeeds
+        })
+    }
+
+    pub fn call_function1(&self, name: &str, args: &[Val]) -> VmResult<Val> {
+        let result = self.call_function(name, args)?;
+        let expected = 1;
+        let actual = result.len();
+        if actual != expected {
+            return Err(VmError::custom(format!("Unexpected number of result values when calling '{}'. Expected: {}, actual: {}.", name, expected, actual)));
+        }
+        Ok(result[0].clone())
     }
 }
 

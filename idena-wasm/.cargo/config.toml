@@ -1,0 +1,4 @@
+[build]
+rustflags = [
+  "--print=native-static-libs"
+]

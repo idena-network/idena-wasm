@@ -9,6 +9,7 @@ use wasmer_middlewares::Metering;
 use crate::backend::Backend;
 use crate::environment::Env;
 use crate::errors::VmError;
+use crate::gatekeeper::*;
 use crate::imports::*;
 use crate::memory::VmResult;
 
@@ -27,18 +28,29 @@ impl VmRunner {
         let metering = Arc::new(Metering::new(1000000000, cost_function));
         let mut compiler_config = Singlepass::default();
         compiler_config.push_middleware(metering);
+        compiler_config.push_middleware(Arc::new(Gatekeeper::default()));
         let store = Store::new(&Universal::new(compiler_config).engine());
         let env = Env::new(api);
         let import_object = imports! {
         "env" => {
+            "debug" => Function::new_native_with_env(&store, env.clone(), debug),
+            "abort" => Function::new_native_with_env(&store, env.clone(), abort),
             "set_storage" => Function::new_native_with_env(&store, env.clone(), set_storage),
+            "get_storage" => Function::new_native_with_env(&store, env.clone(), get_storage),
+            "remove_storage" => Function::new_native_with_env(&store, env.clone(), remove_storage),
+            "block_timestamp" => Function::new_native_with_env(&store, env.clone(), block_timestamp),
+            "block_number" => Function::new_native_with_env(&store, env.clone(), block_number),
+            "min_fee_per_gas" => Function::new_native_with_env(&store, env.clone(), min_fee_per_gas),
+            "balance" => Function::new_native_with_env(&store, env.clone(), balance),
+            "network_size" => Function::new_native_with_env(&store, env.clone(), network_size),
+            "identity_state" => Function::new_native_with_env(&store, env.clone(), identity_state),
+            "send" => Function::new_native_with_env(&store, env.clone(), send),
             }
         };
         let module = match Module::new(&store, code) {
             Ok(v) => v,
             Err(err) => {
-                println!("{:?}", err);
-                return Err(VmError::new("compilation error"));
+                return Err(VmError::custom(format!("compilation error: {}", err)));
             }
         };
 
@@ -54,7 +66,7 @@ impl VmRunner {
 
         match main.call() {
             Ok(_) => Ok(()),
-            Err(_) => Ok(())
+            Err(err) => Err(VmError::custom(format!("runtime error: {}", err)))
         }
     }
 }

@@ -3,6 +3,12 @@ package lib
 // #include <stdlib.h>
 // #include "bindings.h"
 import "C"
+import (
+	"errors"
+	"fmt"
+	"syscall"
+	"unsafe"
+)
 
 // Value types
 type cint = C.int
@@ -18,17 +24,38 @@ type ci64 = C.int64_t
 // Pointers
 type cu8_ptr = *C.uint8_t
 
-func NewMockAPI() *GoAPI {
-	return &GoAPI{
-		SetStorage: func(bytes []byte, bytes2 []byte) int {
-			println(bytes)
-			return 0
-		},
+func copyAndDestroyUnmanagedVector(v C.UnmanagedVector) []byte {
+	var out []byte
+	if v.is_none {
+		out = nil
+	} else if v.cap == cusize(0) {
+		// There is no allocation we can copy
+		out = []byte{}
+	} else {
+		// C.GoBytes create a copy (https://stackoverflow.com/a/40950744/2013738)
+		out = C.GoBytes(unsafe.Pointer(v.ptr), cint(v.len))
 	}
+	//C.destroy_unmanaged_vector(v)
+	return out
 }
 
-func Execute(code []byte) {
-	api := NewMockAPI()
-	res := C.execute(buildAPI(api), makeView(code))
-	println(res)
+func errorWithMessage(err error, b C.UnmanagedVector) error {
+	// this checks for out of gas as a special case
+	if errno, ok := err.(syscall.Errno); ok && int(errno) == 2 {
+		return errors.New("out of gas")
+	}
+	msg := copyAndDestroyUnmanagedVector(b)
+	if msg == nil {
+		return err
+	}
+	return fmt.Errorf("%s", string(msg))
+}
+
+func Execute(code []byte, api *GoAPI) error {
+	errmsg := newUnmanagedVector(nil)
+	err, winerr  := C.execute(buildAPI(api), makeView(code), &errmsg)
+	if err == 0 {
+		return nil
+	}
+	return errorWithMessage(winerr, errmsg)
 }

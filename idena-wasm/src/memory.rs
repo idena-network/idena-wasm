@@ -1,4 +1,6 @@
+use std::any::type_name;
 use std::slice;
+
 use wasmer::{Array, ValueType, WasmPtr};
 
 use crate::errors::VmError;
@@ -21,9 +23,17 @@ pub type VmResult<T> = core::result::Result<T, VmError>;
 
 unsafe impl ValueType for Region {}
 
-fn to_u32<T: std::convert::TryInto<u32> + ToString + Copy>(input: T) -> VmResult<u32> {
+/// Safely converts input of type &T to u32.
+/// Errors with a cosmwasm_vm::errors::VmError::ConversionErr if conversion cannot be done.
+pub fn ref_to_u32<T: TryInto<u32> + ToString + Clone>(input: &T) -> VmResult<u32> {
+    input.clone().try_into().map_err(|_| {
+        VmError::custom(format!("Couldn't convert from {} to {}. Input: {}", type_name::<T>(), type_name::<u32>(), input.to_string()))
+    })
+}
+
+pub fn to_u32<T: std::convert::TryInto<u32> + ToString + Copy>(input: T) -> VmResult<u32> {
     input.try_into().map_err(|_| {
-        VmError::new("conversion err")
+        VmError::custom("conversion err")
     })
 }
 
@@ -32,7 +42,7 @@ pub fn read_region(memory: &wasmer::Memory, ptr: u32, max_length: usize) -> VmRe
 
     if region.length > to_u32(max_length)? {
         return Err(
-            VmError::new("region_length_too_big")
+            VmError::custom("region_length_too_big")
         );
     }
 
@@ -47,7 +57,7 @@ pub fn read_region(memory: &wasmer::Memory, ptr: u32, max_length: usize) -> VmRe
             }
             Ok(result)
         }
-        None => Err(VmError::new(format!(
+        None => Err(VmError::custom(format!(
             "Tried to access memory of region {:?} in wasm memory of size {} bytes. This typically happens when the given Region pointer does not point to a proper Region struct.",
             region,
             memory.size().bytes().0
@@ -79,7 +89,7 @@ pub fn write_region(memory: &wasmer::Memory, ptr: u32, data: &[u8]) -> VmResult<
 
     let region_capacity = region.capacity as usize;
     if data.len() > region_capacity {
-        return Err(VmError::new("region_too_small"));
+        return Err(VmError::custom("region_too_small"));
     }
     match WasmPtr::<u8, Array>::new(region.offset).deref(memory, 0, region.capacity) {
         Some(cells) => {
@@ -92,7 +102,7 @@ pub fn write_region(memory: &wasmer::Memory, ptr: u32, data: &[u8]) -> VmResult<
             set_region(memory, ptr, region)?;
             Ok(())
         }
-        None => Err(VmError::new(format!(
+        None => Err(VmError::custom(format!(
             "Tried to access memory of region {:?} in wasm memory of size {} bytes. This typically happens when the given Region pointer does not point to a proper Region struct.",
             region,
             memory.size().bytes().0
@@ -109,7 +119,7 @@ fn get_region(memory: &wasmer::Memory, ptr: u32) -> CommunicationResult<Region> 
             validate_region(&region)?;
             Ok(region)
         }
-        None => Err(VmError::new("Could not dereference this pointer to a Region"))
+        None => Err(VmError::custom("Could not dereference this pointer to a Region"))
     }
 }
 
@@ -117,13 +127,13 @@ fn get_region(memory: &wasmer::Memory, ptr: u32) -> CommunicationResult<Region> 
 /// contract and this can be used to detect problems in the standard library of the contract.
 fn validate_region(region: &Region) -> RegionValidationResult<()> {
     if region.offset == 0 {
-        return Err(VmError::new("zero offset"));
+        return Err(VmError::custom("zero offset"));
     }
     if region.length > region.capacity {
-        return Err(VmError::new("length > capacity"));
+        return Err(VmError::custom("length > capacity"));
     }
     if region.capacity > (u32::MAX - region.offset) {
-        return Err(VmError::new("out of range"));
+        return Err(VmError::custom("out of range"));
     }
     Ok(())
 }
@@ -137,7 +147,7 @@ fn set_region(memory: &wasmer::Memory, ptr: u32, data: Region) -> CommunicationR
             cell.set(data);
             Ok(())
         }
-        None => Err(VmError::new(
+        None => Err(VmError::custom(
             "Could not dereference this pointer to a Region"
         )),
     }

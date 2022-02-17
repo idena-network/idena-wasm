@@ -54,6 +54,10 @@ typedef struct api_t {
   uint8_t _private[0];
 } api_t;
 
+typedef struct gas_meter_t {
+  uint8_t _private[0];
+} gas_meter_t;
+
 typedef struct U8SliceView {
   /**
    * True if and only if this is None. If this is true, the other fields must be ignored.
@@ -64,16 +68,30 @@ typedef struct U8SliceView {
 } U8SliceView;
 
 typedef struct GoApi_vtable {
+  int32_t (*set_remaining_gas)(const struct api_t*, uint64_t);
   int32_t (*set_storage)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*);
   int32_t (*get_storage)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*remove_storage)(const struct api_t*, struct U8SliceView, uint64_t*);
   int32_t (*block_number)(const struct api_t*, uint64_t*, uint64_t*);
   int32_t (*block_timestamp)(const struct api_t*, uint64_t*, int64_t*);
-  int32_t (*send)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*send)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*min_fee_per_gas)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*balance)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*block_seed)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*network_size)(const struct api_t*, uint64_t*, uint64_t*);
+  int32_t (*identity_state)(const struct api_t*, struct U8SliceView, uint64_t*, uint8_t*);
+  int32_t (*pub_key)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*burn_all)(const struct api_t*, uint64_t*);
+  int32_t (*read_contract_data)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*epoch)(const struct api_t*, uint64_t*, uint16_t*);
+  int32_t (*contract_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*move_to_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*delegatee)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {
   const struct api_t *state;
+  const struct gas_meter_t *gasMeter;
   struct GoApi_vtable vtable;
 } GoApi;
 
@@ -86,6 +104,8 @@ typedef struct ByteSliceView {
   uintptr_t len;
 } ByteSliceView;
 
+void destroy_unmanaged_vector(struct UnmanagedVector v);
+
 struct UnmanagedVector new_unmanaged_vector(bool nil, const uint8_t *ptr, uintptr_t length);
 
-int32_t execute(struct GoApi api, struct ByteSliceView code);
+int32_t execute(struct GoApi api, struct ByteSliceView code, struct UnmanagedVector *err_msg);
