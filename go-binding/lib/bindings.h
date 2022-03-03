@@ -87,6 +87,7 @@ typedef struct GoApi_vtable {
   int32_t (*contract_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*move_to_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*delegatee)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*identity)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {
@@ -108,4 +109,17 @@ void destroy_unmanaged_vector(struct UnmanagedVector v);
 
 struct UnmanagedVector new_unmanaged_vector(bool nil, const uint8_t *ptr, uintptr_t length);
 
-int32_t execute(struct GoApi api, struct ByteSliceView code, struct UnmanagedVector *err_msg);
+uint8_t execute(struct GoApi api,
+                struct ByteSliceView code,
+                struct ByteSliceView method_name,
+                struct ByteSliceView args,
+                uint64_t gas_limit,
+                uint64_t *gas_used,
+                struct UnmanagedVector *err_msg);
+
+uint8_t deploy(struct GoApi api,
+               struct ByteSliceView code,
+               struct ByteSliceView args,
+               uint64_t gas_limit,
+               uint64_t *gas_used,
+               struct UnmanagedVector *err_msg);

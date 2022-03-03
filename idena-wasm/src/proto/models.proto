@@ -1,0 +1,6 @@
+syntax = "proto3";
+package models;
+
+message ProtoCallContractArgs {
+  repeated bytes args = 1;
+}

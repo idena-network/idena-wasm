@@ -24,14 +24,14 @@ pub fn process_gas_info<B: Backend>(
     env.set_gas_left(gas_left);
 
     if gas_left == 0 {
-        Err(VmError::custom("Ran out of gas during contract execution"))
+        Err(VmError::out_of_gas())
     } else {
         Ok(())
     }
 }
 
 /// Creates a Region in the contract, writes the given data to it and returns the memory location
-fn write_to_contract<B: Backend>(
+pub fn write_to_contract<B: Backend>(
     env: &Env<B>,
     input: &[u8],
 ) -> VmResult<u32> {
@@ -173,6 +173,25 @@ pub fn identity_state<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u8> {
     Ok(result?)
 }
 
+pub fn identity<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u32> {
+    let address = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
+
+    let gas_left = env.get_gas_left();
+
+    env.backend.set_remaining_gas(gas_left);
+
+    let (result, gas) = env.backend.identity(address);
+
+    process_gas_info(env, gas)?;
+    let value = result?;
+
+    let out_data = match value {
+        Some(data) => data,
+        None => return Ok(0),
+    };
+    write_to_contract(env, &out_data)
+}
+
 pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
     let to = read_region(&env.memory(), to, MAX_ADDRESS_SIZE)?;
 
@@ -199,6 +218,13 @@ pub fn debug<B: Backend>(env: &Env<B>, ptr: u32) -> VmResult<()> {
 pub fn abort<B: Backend>(env: &Env<B>, msg: u32, filePtr: u32, line: u32, col: u32) {
     println!("called abort fn {} {} {} {}", msg, filePtr, line, col);
 }
+
+pub fn panic<B: Backend>(env: &Env<B>, msg: u32) -> VmResult<()> {
+    let message_data = read_region(&env.memory(), msg, 1024)?;
+    let msg = String::from_utf8_lossy(&message_data);
+    Err(VmError::wasm_err(msg))
+}
+
 
 
 

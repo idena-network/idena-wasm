@@ -3,7 +3,7 @@ use std::fmt::{Debug, Display, Formatter};
 use thiserror::Error;
 
 use crate::backend::BackendError;
-use crate::errors::VmError::{Custom, OutOfGas};
+use crate::errors::VmError::{Custom, OutOfGas, WasmExecutionErr};
 
 #[derive(Error, Debug)]
 pub enum VmError {
@@ -13,11 +13,21 @@ pub enum VmError {
     },
     #[error("Out of gas")]
     OutOfGas,
+    #[error("Error in wasm module: {}", msg)]
+    WasmExecutionErr {
+        msg: String
+    },
 }
 
 impl VmError {
     pub fn custom(msg: impl Into<String>) -> Self {
         Custom {
+            msg: msg.into()
+        }
+    }
+
+    pub fn wasm_err(msg: impl Into<String>) -> Self {
+        WasmExecutionErr {
             msg: msg.into()
         }
     }

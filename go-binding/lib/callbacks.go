@@ -40,6 +40,9 @@ GoResult cnetwork_size(api_t *ptr, uint64_t *used_gas,  uint64_t *size);
 typedef GoResult (*identity_state_fn)(api_t *ptr,  U8SliceView addr, uint64_t *used_gas,  uint8_t *state);
 GoResult cidentity_state(api_t *ptr,  U8SliceView addr, uint64_t *used_gas,  uint8_t *state);
 
+typedef GoResult (*identity_fn)(api_t *ptr,  U8SliceView addr, uint64_t *used_gas,  UnmanagedVector *data);
+GoResult cidentity(api_t *ptr,  U8SliceView addr, uint64_t *used_gas, UnmanagedVector *data);
+
 */
 import "C"
 import (
@@ -65,6 +68,7 @@ var api_vtable = C.GoApi_vtable{
 	network_size:      (C.network_size_fn)(C.cnetwork_size),
 	identity_state:    (C.identity_state_fn)(C.cidentity_state),
 	send:              (C.send_fn)(C.csend),
+	identity:          (C.identity_fn)(C.cidentity),
 }
 
 // contract: original pointer/struct referenced must live longer than C.GoApi struct
@@ -199,6 +203,18 @@ func cidentity_state(ptr *C.api_t, addr C.U8SliceView, gasUsed *cu64, state *cu8
 	gasBefore := api.gasMeter.GasConsumed()
 
 	*state = cu8(api.host.IdentityState(api.gasMeter, address))
+
+	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
+	return C.GoResult_Ok
+}
+
+//export cidentity
+func cidentity(ptr *C.api_t, addr C.U8SliceView, gasUsed *cu64, result *C.UnmanagedVector) (ret C.GoResult) {
+	address := newAddress(copyU8Slice(addr))
+	api := (*GoAPI)(unsafe.Pointer(ptr))
+	gasBefore := api.gasMeter.GasConsumed()
+
+	*result = newUnmanagedVector(api.host.Identity(api.gasMeter, address))
 
 	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
 	return C.GoResult_Ok

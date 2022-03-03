@@ -49,6 +49,7 @@ pub trait Backend: Copy + Clone + Send {
     fn contract_stake(&self, addr: Address) -> BackendResult<IDNA>;
     fn move_to_stake(&self, amount: IDNA) -> BackendResult<()>;
     fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>>;
+    fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>>;
 }
 
 pub struct MockBackend {}
@@ -141,6 +142,10 @@ impl Backend for MockBackend {
     }
 
     fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>> {
+        todo!()
+    }
+
+    fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>> {
         todo!()
     }
 }

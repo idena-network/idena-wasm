@@ -6,7 +6,8 @@ import "C"
 import (
 	"errors"
 	"fmt"
-	"syscall"
+	"github.com/golang/protobuf/proto"
+	models "go-binding/lib/protobuf"
 	"unsafe"
 )
 
@@ -39,23 +40,31 @@ func copyAndDestroyUnmanagedVector(v C.UnmanagedVector) []byte {
 	return out
 }
 
-func errorWithMessage(err error, b C.UnmanagedVector) error {
+func errorWithMessage(err int, b C.UnmanagedVector) error {
 	// this checks for out of gas as a special case
-	if errno, ok := err.(syscall.Errno); ok && int(errno) == 2 {
+	if err == 2 {
 		return errors.New("out of gas")
 	}
 	msg := copyAndDestroyUnmanagedVector(b)
 	if msg == nil {
-		return err
+		return errors.New("error without description")
 	}
 	return fmt.Errorf("%s", string(msg))
 }
 
-func Execute(code []byte, api *GoAPI) error {
+func Execute(api *GoAPI, code []byte, method string, args [][]byte, gasLimit uint64) (uint64, error) {
 	errmsg := newUnmanagedVector(nil)
-	err, winerr  := C.execute(buildAPI(api), makeView(code), &errmsg)
-	if err == 0 {
-		return nil
+	argsMsg := models.ProtoCallContractArgs{
+		Args: args,
 	}
-	return errorWithMessage(winerr, errmsg)
+	argsBytes, err := proto.Marshal(&argsMsg)
+	if err != nil {
+		return 0, err
+	}
+	var gasUsed cu64
+	errno := C.execute(buildAPI(api), makeView(code), makeView([]byte(method)), makeView(argsBytes), cu64(gasLimit), &gasUsed, &errmsg)
+	if errno == 0 {
+		return uint64(gasUsed), nil
+	}
+	return uint64(gasUsed), errorWithMessage(int(errno), errmsg)
 }

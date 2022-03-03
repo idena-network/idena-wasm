@@ -1,11 +1,13 @@
 use std::{mem, slice, str};
 
 use errno::{Errno, set_errno};
+use protobuf::Message;
 
 use crate::backend::{Address, Backend, BackendError, BackendResult, IDNA};
 use crate::environment::Env;
 use crate::errors::VmError;
 use crate::memory::ByteSliceView;
+use crate::proto;
 use crate::runner::VmRunner;
 
 #[repr(C)]
@@ -126,7 +128,12 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut UnmanagedVector, // result
     ) -> i32,
-
+    pub identity: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
 }
 
 #[repr(C)]
@@ -498,6 +505,16 @@ impl Backend for apiWrapper {
         }
         (Ok(data.consume()), used_gas)
     }
+
+    fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.identity)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(data.consume()), used_gas)
+    }
 }
 
 unsafe impl Send for apiWrapper {}
@@ -506,11 +523,25 @@ unsafe impl Sync for apiWrapper {}
 
 
 #[no_mangle]
-pub extern "C" fn execute(api: GoApi, code: ByteSliceView, err_msg: Option<&mut UnmanagedVector>) {
+pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
+                          method_name: ByteSliceView,
+                          args: ByteSliceView,
+                          gas_limit: u64,
+                          gas_used: Option<&mut u64>,
+                          err_msg: Option<&mut UnmanagedVector>) -> u8 {
     let data: Vec<u8> = code.read().unwrap().into();
-    match VmRunner::execute(apiWrapper::new(api), data) {
-        Ok(_) => set_errno(Errno(0)),
+
+    let arguments_bytes = args.read().unwrap_or(&[]);
+    let method_bytes: Vec<u8> = method_name.read().unwrap().into();
+    let method = String::from_utf8_lossy(&method_bytes).to_string();
+    let arguments = proto::models::ProtoCallContractArgs::parse_from_bytes(arguments_bytes).unwrap();
+    let gas_used = gas_used.unwrap();
+    let execution_result = VmRunner::execute(apiWrapper::new(api), data, method.as_str(), arguments.args, gas_limit, gas_used);
+    match execution_result {
+        Ok(_) => 0,
         Err(err) => {
+            *gas_used = gas_limit;
+
             if let Some(err_msg) = err_msg {
                 if err_msg.is_some() {
                     panic!(
@@ -524,8 +555,47 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView, err_msg: Option<&mut 
                 // That's not nice but we can live with it.
             }
             match err {
-                VmError::Custom { msg } => set_errno(Errno(1)),
-                VmError::OutOfGas => set_errno(Errno(2)),
+                VmError::Custom { .. } => 1,
+                VmError::OutOfGas => 2,
+                VmError::WasmExecutionErr { .. } => 3
+            }
+        }
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn deploy(api: GoApi, code: ByteSliceView,
+                         args: ByteSliceView,
+                         gas_limit: u64,
+                         gas_used: Option<&mut u64>,
+                         err_msg: Option<&mut UnmanagedVector>) -> u8 {
+    let data: Vec<u8> = code.read().unwrap().into();
+
+    let arguments_bytes = args.read().unwrap_or(&[]);
+    let arguments = proto::models::ProtoCallContractArgs::parse_from_bytes(arguments_bytes).unwrap();
+    let gas_used = gas_used.unwrap();
+    let deploy_result = VmRunner::deploy(apiWrapper::new(api), data, arguments.args, gas_limit, gas_used);
+    match deploy_result {
+        Ok(_) => 0,
+        Err(err) => {
+            *gas_used = gas_limit;
+
+            if let Some(err_msg) = err_msg {
+                if err_msg.is_some() {
+                    panic!(
+                        "There is an old error message in the given pointer that has not been \
+                cleaned up. Error message pointers should not be reused for multiple calls."
+                    )
+                }
+                *err_msg = UnmanagedVector::new(Some(err.to_string().into()));
+            } else {
+                // The caller provided a nil pointer for the error message.
+                // That's not nice but we can live with it.
+            }
+            match err {
+                VmError::Custom { .. } => 1,
+                VmError::OutOfGas => 2,
+                VmError::WasmExecutionErr { .. } => 3
             }
         }
     }

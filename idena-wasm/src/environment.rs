@@ -102,7 +102,7 @@ impl<B: Backend> Env<B> {
             .expect("Wasmer instance is not set. This is a bug in the lifecycle.")
     }
 
-    fn call_function(&self, name: &str, args: &[Val]) -> VmResult<Box<[Val]>> {
+    pub fn call_function(&self, name: &str, args: &[Val]) -> VmResult<Box<[Val]>> {
         // Clone function before calling it to avoid dead locks
         let func = self.with_wasmer_instance(|instance| {
             let func = instance.exports.get_function(name)?;
@@ -112,7 +112,7 @@ impl<B: Backend> Env<B> {
             self.with_wasmer_instance::<_, Never>(|instance| {
                 let err: VmError = match get_remaining_points(instance) {
                     MeteringPoints::Remaining(_) => VmError::custom(runtime_err.to_string()),
-                    MeteringPoints::Exhausted => VmError::custom("Ran out of gas during contract execution"),
+                    MeteringPoints::Exhausted => VmError::out_of_gas(),
                 };
                 Err(err)
             })

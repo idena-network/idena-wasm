@@ -13,6 +13,10 @@ type HostEnvMock struct {
 	db db.DB
 }
 
+func (r *HostEnvMock) Identity(meter *GasMeter, address Address) []byte {
+	panic("implement me")
+}
+
 func (r *HostEnvMock) IdentityState(meter *GasMeter, address Address) byte {
 	return 3
 }
@@ -77,5 +81,7 @@ func NewMockAPI() *GoAPI {
 
 func TestExecute(t *testing.T) {
 	code, _ := Testdata1()
-	require.NoError(t, Execute(code, NewMockAPI()))
+	gas, err := Execute(NewMockAPI(), code, "main", [][]byte{nil, {0x12, 0x13}}, 10000000)
+	require.NoError(t, err)
+	require.True(t, gas > 0)
 }

@@ -25,6 +25,7 @@ type HostEnv interface {
 	BlockSeed() []byte
 	NetworkSize(meter *GasMeter) uint64
 	IdentityState(meter *GasMeter, address Address) byte
+	Identity(meter *GasMeter, address Address) []byte
 }
 type GasMeter struct {
 	gasLimit    uint64
