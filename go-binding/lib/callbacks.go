@@ -43,9 +43,13 @@ GoResult cidentity_state(api_t *ptr,  U8SliceView addr, uint64_t *used_gas,  uin
 typedef GoResult (*identity_fn)(api_t *ptr,  U8SliceView addr, uint64_t *used_gas,  UnmanagedVector *data);
 GoResult cidentity(api_t *ptr,  U8SliceView addr, uint64_t *used_gas, UnmanagedVector *data);
 
+typedef GoResult (*call_fn)(api_t *ptr,  U8SliceView addr, U8SliceView method,U8SliceView args, uint64_t gas_limit, uint64_t *used_gas);
+GoResult ccall(api_t *ptr, U8SliceView addr, U8SliceView method,U8SliceView args, uint64_t gas_limit, uint64_t *used_gas);
+
 */
 import "C"
 import (
+	"fmt"
 	"math/big"
 	"unsafe"
 )
@@ -69,6 +73,7 @@ var api_vtable = C.GoApi_vtable{
 	identity_state:    (C.identity_state_fn)(C.cidentity_state),
 	send:              (C.send_fn)(C.csend),
 	identity:          (C.identity_fn)(C.cidentity),
+	call:              (C.call_fn)(C.ccall),
 }
 
 // contract: original pointer/struct referenced must live longer than C.GoApi struct
@@ -217,5 +222,31 @@ func cidentity(ptr *C.api_t, addr C.U8SliceView, gasUsed *cu64, result *C.Unmana
 	*result = newUnmanagedVector(api.host.Identity(api.gasMeter, address))
 
 	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
+	return C.GoResult_Ok
+}
+
+//export ccall
+func ccall(ptr *C.api_t, addr C.U8SliceView, method C.U8SliceView, args C.U8SliceView, gasLimit cu64, gasUsed *cu64) (ret C.GoResult) {
+	address := newAddress(copyU8Slice(addr))
+	api := (*GoAPI)(unsafe.Pointer(ptr))
+
+	code := api.host.GetCode(address)
+	if len(code) == 0 {
+		*gasUsed = gasLimit
+		return C.GoResult_Other
+	}
+
+	subHost := api.host.CreateSubEnv()
+	meter := GasMeter{}
+	subApi := &GoAPI{
+		host:     subHost,
+		gasMeter: &meter,
+	}
+	subCallGasUsed, err := executeInternal(subApi, code, copyU8Slice(method), copyU8Slice(args), uint64(gasLimit))
+	println(fmt.Sprintf("sub call err: %v", err))
+	*gasUsed = cu64(subCallGasUsed)
+	if err != nil {
+		return C.GoResult_Other
+	}
 	return C.GoResult_Ok
 }

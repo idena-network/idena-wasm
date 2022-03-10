@@ -1,4 +1,5 @@
 use std::fmt::{Debug, Display, Formatter};
+use std::ops::Add;
 
 use thiserror::Error;
 
@@ -50,6 +51,7 @@ pub trait Backend: Copy + Clone + Send {
     fn move_to_stake(&self, amount: IDNA) -> BackendResult<()>;
     fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>>;
     fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>>;
+    fn call(&self, addr: Address, method : Vec<u8>, args : Vec<u8>, gas_limit : u64) -> BackendResult<()>;
 }
 
 pub struct MockBackend {}
@@ -146,6 +148,10 @@ impl Backend for MockBackend {
     }
 
     fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>> {
+        todo!()
+    }
+
+    fn call(&self, addr: Address, method: Vec<u8>, args: Vec<u8>, gas_limit: u64) -> BackendResult<()> {
         todo!()
     }
 }

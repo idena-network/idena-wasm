@@ -6,7 +6,7 @@ use protobuf::Message;
 use crate::backend::{Address, Backend, BackendError, BackendResult, IDNA};
 use crate::environment::Env;
 use crate::errors::VmError;
-use crate::memory::ByteSliceView;
+use crate::memory::{ByteSliceView, VmResult};
 use crate::proto;
 use crate::runner::VmRunner;
 
@@ -133,6 +133,14 @@ pub struct GoApi_vtable {
         U8SliceView, // addr
         *mut u64,
         *mut UnmanagedVector, // result
+    ) -> i32,
+    pub call: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        U8SliceView, // method
+        U8SliceView, // args
+        u64, // gas limit
+        *mut u64,
     ) -> i32,
 }
 
@@ -515,6 +523,16 @@ impl Backend for apiWrapper {
         }
         (Ok(data.consume()), used_gas)
     }
+
+    fn call(&self, addr: Address, method: Vec<u8>, args: Vec<u8>, gas_limit: u64) -> BackendResult<()> {
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.call)(self.api.state, U8SliceView::new(Some(&addr)), U8SliceView::new(Some(&method)),
+                                               U8SliceView::new(Some(&args)), gas_limit, &mut used_gas as *mut u64);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        (Ok(()), used_gas)
+    }
 }
 
 unsafe impl Send for apiWrapper {}
@@ -522,22 +540,51 @@ unsafe impl Send for apiWrapper {}
 unsafe impl Sync for apiWrapper {}
 
 
+const ARGS_PROTOBUF_FORMAT: u8 = 0x1;
+const ARGS_PLAIN_FORMAT: u8 = 0x0;
+
+fn do_execute(api: GoApi, code: ByteSliceView,
+              method_name: ByteSliceView,
+              args: ByteSliceView,
+              gas_limit: u64,
+              gas_used: &mut u64) -> VmResult<()> {
+    let data: Vec<u8> = code.read().ok_or_else(|| VmError::custom("code is required"))?.into();
+    let arguments_bytes = args.read().unwrap_or(&[]);
+
+    let method_bytes: Vec<u8> = method_name.read().ok_or_else(|| VmError::custom("method is required"))?.into();
+    let method = String::from_utf8_lossy(&method_bytes).to_string();
+
+
+    if arguments_bytes.len() == 0 {
+        return Err(VmError::custom("invalid arguments"));
+    }
+
+
+    let args: protobuf::RepeatedField<Vec<u8>>;
+
+    match arguments_bytes[0] {
+        ARGS_PROTOBUF_FORMAT => {
+            args = proto::models::ProtoCallContractArgs::parse_from_bytes(&arguments_bytes[1..])
+                .or(Err(VmError::custom("failed to parse arguments")))?.args;
+        }
+        ARGS_PLAIN_FORMAT => { args = protobuf::RepeatedField::from_vec(vec![arguments_bytes[1..].to_vec()]); }
+        _ => return Err(VmError::custom("unknown format of args"))
+    }
+
+    println!("execute code: code len={}, method={}, args={:?}, gas limit={}", data.len(), method, args, gas_limit);
+
+    VmRunner::execute(apiWrapper::new(api), data, method.as_str(), args, gas_limit, gas_used)
+}
+
+
 #[no_mangle]
 pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
                           method_name: ByteSliceView,
                           args: ByteSliceView,
                           gas_limit: u64,
-                          gas_used: Option<&mut u64>,
+                          gas_used: &mut u64,
                           err_msg: Option<&mut UnmanagedVector>) -> u8 {
-    let data: Vec<u8> = code.read().unwrap().into();
-
-    let arguments_bytes = args.read().unwrap_or(&[]);
-    let method_bytes: Vec<u8> = method_name.read().unwrap().into();
-    let method = String::from_utf8_lossy(&method_bytes).to_string();
-    let arguments = proto::models::ProtoCallContractArgs::parse_from_bytes(arguments_bytes).unwrap();
-    let gas_used = gas_used.unwrap();
-    let execution_result = VmRunner::execute(apiWrapper::new(api), data, method.as_str(), arguments.args, gas_limit, gas_used);
-    match execution_result {
+    match do_execute(api, code, method_name, args, gas_limit, gas_used) {
         Ok(_) => 0,
         Err(err) => {
             *gas_used = gas_limit;

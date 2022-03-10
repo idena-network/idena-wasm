@@ -13,60 +13,71 @@ type HostEnvMock struct {
 	db db.DB
 }
 
-func (r *HostEnvMock) Identity(meter *GasMeter, address Address) []byte {
+func (e *HostEnvMock) CreateSubEnv() HostEnv {
+	return &HostEnvMock{
+		db: e.db,
+	}
+}
+
+func (e *HostEnvMock) GetCode(addr Address) []byte {
+	code, _ := Testdata1()
+	return code
+}
+
+func (e *HostEnvMock) Identity(meter *GasMeter, address Address) []byte {
 	panic("implement me")
 }
 
-func (r *HostEnvMock) IdentityState(meter *GasMeter, address Address) byte {
+func (e *HostEnvMock) IdentityState(meter *GasMeter, address Address) byte {
 	return 3
 }
 
-func (r *HostEnvMock) NetworkSize(meter *GasMeter) uint64 {
+func (e *HostEnvMock) NetworkSize(meter *GasMeter) uint64 {
 	return 117
 }
 
-func (h *HostEnvMock) BlockSeed() []byte {
+func (e *HostEnvMock) BlockSeed() []byte {
 	return []byte{1, 2, 3, 0x0a}
 }
 
-func (h *HostEnvMock) Balance(address Address) *big.Int {
+func (e *HostEnvMock) Balance(address Address) *big.Int {
 	return big.NewInt(15)
 }
 
-func (h *HostEnvMock) MinFeePerGas() *big.Int {
+func (e *HostEnvMock) MinFeePerGas() *big.Int {
 	return big.NewInt(10)
 }
 
-func (h *HostEnvMock) Send(meter *GasMeter, address Address, amount *big.Int) error {
+func (e *HostEnvMock) Send(meter *GasMeter, address Address, amount *big.Int) error {
 	println(fmt.Sprintf("send amount %v", amount.String()))
 	meter.gasConsumed += 20
 	return nil
 }
 
-func (h *HostEnvMock) BlockNumber(meter *GasMeter) uint64 {
+func (e *HostEnvMock) BlockNumber(meter *GasMeter) uint64 {
 	meter.gasConsumed += 1
 	return math.MaxUint64 - 1
 }
 
-func (h *HostEnvMock) BlockTimestamp(meter *GasMeter) int64 {
+func (e *HostEnvMock) BlockTimestamp(meter *GasMeter) int64 {
 	meter.gasConsumed += 1
 	return 121020131
 }
 
-func (h *HostEnvMock) SetStorage(meter *GasMeter, key []byte, data []byte) {
+func (e *HostEnvMock) SetStorage(meter *GasMeter, key []byte, data []byte) {
 	meter.gasConsumed += uint64(len(key))
-	h.db.Set(key, data)
+	e.db.Set(key, data)
 }
 
-func (h *HostEnvMock) GetStorage(meter *GasMeter, key []byte) []byte {
-	data, _ := h.db.Get(key)
+func (e *HostEnvMock) GetStorage(meter *GasMeter, key []byte) []byte {
+	data, _ := e.db.Get(key)
 	meter.gasConsumed += uint64(len(data))
 	return data
 }
 
-func (h *HostEnvMock) RemoveStorage(meter *GasMeter, key []byte) {
+func (e *HostEnvMock) RemoveStorage(meter *GasMeter, key []byte) {
 	meter.gasConsumed += uint64(len(key))
-	h.db.Delete(key)
+	e.db.Delete(key)
 }
 
 func NewMockAPI() *GoAPI {
@@ -81,7 +92,8 @@ func NewMockAPI() *GoAPI {
 
 func TestExecute(t *testing.T) {
 	code, _ := Testdata1()
-	gas, err := Execute(NewMockAPI(), code, "main", [][]byte{nil, {0x12, 0x13}}, 10000000)
+	gas, err := Execute(NewMockAPI(), code, "inc", [][]byte{{0}}, 100000000)
 	require.NoError(t, err)
 	require.True(t, gas > 0)
+	t.Logf("gas used=%v", gas)
 }

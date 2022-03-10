@@ -25,6 +25,9 @@ type ci64 = C.int64_t
 // Pointers
 type cu8_ptr = *C.uint8_t
 
+const ArgsPlainFormat = 0x0
+const ArgsProtobufFormat = 0x1
+
 func copyAndDestroyUnmanagedVector(v C.UnmanagedVector) []byte {
 	var out []byte
 	if v.is_none {
@@ -52,8 +55,12 @@ func errorWithMessage(err int, b C.UnmanagedVector) error {
 	return fmt.Errorf("%s", string(msg))
 }
 
+func executeInternal(api *GoAPI, code []byte, method []byte, args []byte, gasLimit uint64) (uint64, error) {
+	return execute(api, code,  makeView(method), args, gasLimit)
+}
+
 func Execute(api *GoAPI, code []byte, method string, args [][]byte, gasLimit uint64) (uint64, error) {
-	errmsg := newUnmanagedVector(nil)
+
 	argsMsg := models.ProtoCallContractArgs{
 		Args: args,
 	}
@@ -61,8 +68,13 @@ func Execute(api *GoAPI, code []byte, method string, args [][]byte, gasLimit uin
 	if err != nil {
 		return 0, err
 	}
+	return execute(api, code, makeView([]byte(method)), append([]byte{ArgsProtobufFormat}, argsBytes...), gasLimit)
+}
+
+func execute(api *GoAPI, code []byte, method C.ByteSliceView, args []byte, gasLimit uint64) (uint64, error) {
+	errmsg := newUnmanagedVector(nil)
 	var gasUsed cu64
-	errno := C.execute(buildAPI(api), makeView(code), makeView([]byte(method)), makeView(argsBytes), cu64(gasLimit), &gasUsed, &errmsg)
+	errno := C.execute(buildAPI(api), makeView(code), method, makeView(args), cu64(gasLimit), &gasUsed, &errmsg)
 	if errno == 0 {
 		return uint64(gasUsed), nil
 	}

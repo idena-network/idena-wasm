@@ -88,6 +88,7 @@ typedef struct GoApi_vtable {
   int32_t (*move_to_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*delegatee)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*identity)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*call)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t, uint64_t*);
 } GoApi_vtable;
 
 typedef struct GoApi {

@@ -17,12 +17,12 @@ pub fn process_gas_info<B: Backend>(
     used_gas: u64,
 ) -> VmResult<()> {
     let gas_left = env.get_gas_left();
-
-    gas_left.saturating_sub(used_gas);
+    println!("get gas left {}", gas_left);
+    let gas_left =  gas_left.saturating_sub(used_gas);
 
     // This tells wasmer how much more gas it can consume from this point in time.
     env.set_gas_left(gas_left);
-
+    println!("set gas left {}", gas_left);
     if gas_left == 0 {
         Err(VmError::out_of_gas())
     } else {
@@ -200,6 +200,29 @@ pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
     let gas_left = env.get_gas_left();
     env.backend.set_remaining_gas(gas_left);
     let (res, gas) = env.backend.send(to, amount);
+    process_gas_info(env, gas)?;
+    match res {
+        Ok(_) => Ok(0),
+        Err(_) => Ok(1),
+    }
+}
+
+pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, gas_limit: u32) -> VmResult<u8> {
+
+    println!("{} {} {} {}", addr, method, args, gas_limit);
+
+    let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
+    let method = read_region(&env.memory(), method, 1024)?;
+
+    let args = read_region(&env.memory(), args, 1024)?;
+    let gas_left = env.get_gas_left();
+    if gas_left < gas_limit.into() {
+        return Err(VmError::custom("not enough gas"));
+    }
+
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.call(to, method, args, gas_limit.into());
+    println!("sub call used gas {}", gas);
     process_gas_info(env, gas)?;
     match res {
         Ok(_) => Ok(0),

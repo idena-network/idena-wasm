@@ -26,6 +26,8 @@ type HostEnv interface {
 	NetworkSize(meter *GasMeter) uint64
 	IdentityState(meter *GasMeter, address Address) byte
 	Identity(meter *GasMeter, address Address) []byte
+	CreateSubEnv() HostEnv
+	GetCode(addr Address) []byte
 }
 type GasMeter struct {
 	gasLimit    uint64

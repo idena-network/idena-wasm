@@ -6,7 +6,8 @@ use wasmer::wasmparser::Operator;
 use wasmer_engine_universal::Universal;
 use wasmer_middlewares::Metering;
 use wasmer_middlewares::metering::{get_remaining_points, MeteringPoints};
-use wasmer_types::{ModuleInfo};
+use wasmer_types::ModuleInfo;
+
 use crate::backend::Backend;
 use crate::costs::*;
 use crate::environment::Env;
@@ -81,6 +82,7 @@ impl VmRunner {
             "identity_state" => Function::new_native_with_env(&store, env.clone(), identity_state),
             "identity" => Function::new_native_with_env(&store, env.clone(), identity),
             "send" => Function::new_native_with_env(&store, env.clone(), send),
+            "call" => Function::new_native_with_env(&store, env.clone(), call),
             }
         };
         let module = match Module::new(&store, code) {
@@ -103,12 +105,12 @@ impl VmRunner {
         let (env, module, instance) = Self::build_env(api, code, gas_limit)?;
 
         let required_export = ["allocate", "deploy", "memory"];
-        let module_info = module.info() ;
+        let module_info = module.info();
         for export in required_export {
-             match module_info.exports.get(export) {
-                 Some(_) => continue,
-                 None => return Err(VmError::custom(format!("not found required export: {}", export)))
-             }
+            match module_info.exports.get(export) {
+                Some(_) => continue,
+                None => return Err(VmError::custom(format!("not found required export: {}", export)))
+            }
         }
 
         let wasm_args = Self::prepare_arguments(&env.clone(), module.info(), "deploy", args)?;
