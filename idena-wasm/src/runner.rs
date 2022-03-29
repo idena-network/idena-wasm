@@ -83,6 +83,8 @@ impl VmRunner {
             "identity" => Function::new_native_with_env(&store, env.clone(), identity),
             "send" => Function::new_native_with_env(&store, env.clone(), send),
             "call" => Function::new_native_with_env(&store, env.clone(), call),
+            "caller" => Function::new_native_with_env(&store, env.clone(), caller),
+            "origin_caller" => Function::new_native_with_env(&store, env.clone(), origin_caller),
             }
         };
         let module = match Module::new(&store, code) {
@@ -92,8 +94,9 @@ impl VmRunner {
             }
         };
 
+        let instance = Instance::new(&module, &import_object)?;
 
-        let wasmer_instance = Box::from(Instance::new(&module, &import_object).unwrap());
+        let wasmer_instance = Box::from(instance);
 
         let instance_ptr = NonNull::from(wasmer_instance.as_ref());
         env.set_wasmer_instance(Some(instance_ptr));
@@ -127,6 +130,10 @@ impl VmRunner {
 
     pub fn execute<B: Backend + 'static>(api: B, code: Vec<u8>, method: &str, args: protobuf::RepeatedField<Vec<u8>>, gas_limit: u64, gas_used: &mut u64) -> VmResult<()> {
         let (env, module, instance) = Self::build_env(api, code, gas_limit)?;
+
+        if method == "deploy" {
+            return Err(VmError::custom("direct call to deploy is forbidden'"))
+        }
 
         let wasm_args = Self::prepare_arguments(&env.clone(), module.info(), method, args)?;
 

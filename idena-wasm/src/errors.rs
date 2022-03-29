@@ -43,6 +43,13 @@ impl From<wasmer::ExportError> for VmError {
     }
 }
 
+impl From<wasmer::InstantiationError> for VmError {
+    fn from(original: wasmer::InstantiationError) -> Self {
+        VmError::custom(format!("Failed to instantiate module: {}", original))
+    }
+}
+
+
 impl From<BackendError> for VmError {
     fn from(original: BackendError) -> Self {
         VmError::custom(format!("backend error: {}", original))

@@ -6,7 +6,7 @@ use crate::errors::VmError;
 use crate::exports::gas_meter_t;
 use crate::memory::{read_region, ref_to_u32, to_u32, VmResult, write_region};
 
-const MAX_STORAGE_KEY_SIZE: usize = 32;
+const MAX_STORAGE_KEY_SIZE: usize = 100;
 const MAX_ADDRESS_SIZE: usize = 20;
 const MAX_IDNA_SIZE: usize = 32;
 const MAX_STORAGE_VALUE_SIZE: usize = 128 * 1024;
@@ -18,7 +18,7 @@ pub fn process_gas_info<B: Backend>(
 ) -> VmResult<()> {
     let gas_left = env.get_gas_left();
     println!("get gas left {}", gas_left);
-    let gas_left =  gas_left.saturating_sub(used_gas);
+    let gas_left = gas_left.saturating_sub(used_gas);
 
     // This tells wasmer how much more gas it can consume from this point in time.
     env.set_gas_left(gas_left);
@@ -208,7 +208,6 @@ pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
 }
 
 pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, gas_limit: u32) -> VmResult<u8> {
-
     println!("{} {} {} {}", addr, method, args, gas_limit);
 
     let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
@@ -221,13 +220,31 @@ pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, gas_lim
     }
 
     env.backend.set_remaining_gas(gas_left);
-    let (res, gas) = env.backend.call(to, method, args, gas_limit.into());
+    let (res, gas) = env.backend.call(to, method, args, Vec::new(), gas_limit.into());
     println!("sub call used gas {}", gas);
     process_gas_info(env, gas)?;
     match res {
         Ok(_) => Ok(0),
         Err(_) => Ok(1),
     }
+}
+
+pub fn caller<B:Backend>(env : &Env<B>) -> VmResult<u32> {
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.caller();
+    process_gas_info(env, gas)?;
+    let value = res?;
+    write_to_contract(env, &value)
+}
+
+pub fn origin_caller<B:Backend>(env : &Env<B>) -> VmResult<u32> {
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.origin_caller();
+    process_gas_info(env, gas)?;
+    let value = res?;
+    write_to_contract(env, &value)
 }
 
 

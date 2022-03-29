@@ -42,7 +42,7 @@ pub fn read_region(memory: &wasmer::Memory, ptr: u32, max_length: usize) -> VmRe
 
     if region.length > to_u32(max_length)? {
         return Err(
-            VmError::custom("region_length_too_big")
+            VmError::custom(format!("region_length_too_big: expected max = {}, actual={}", max_length, region.length))
         );
     }
 

@@ -1,0 +1,8 @@
+//protoc --go_opt=paths=source_relative --go_out=./ ./protobuf/*.proto
+
+syntax = "proto3";
+package models;
+
+message ProtoCallContractArgs {
+  repeated bytes args = 1;
+}

@@ -1,1 +1,3 @@
 /idena-wasm/target
+/examples/*/node_modules
+/examples/*/build

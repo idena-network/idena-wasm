@@ -51,7 +51,9 @@ pub trait Backend: Copy + Clone + Send {
     fn move_to_stake(&self, amount: IDNA) -> BackendResult<()>;
     fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>>;
     fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>>;
-    fn call(&self, addr: Address, method : Vec<u8>, args : Vec<u8>, gas_limit : u64) -> BackendResult<()>;
+    fn call(&self, addr: Address, method : Vec<u8>, args : Vec<u8>, amount: Vec<u8>, gas_limit : u64) -> BackendResult<()>;
+    fn caller(&self) -> BackendResult<Vec<u8>>;
+    fn origin_caller(&self) ->BackendResult<Vec<u8>>;
 }
 
 pub struct MockBackend {}
@@ -151,7 +153,15 @@ impl Backend for MockBackend {
         todo!()
     }
 
-    fn call(&self, addr: Address, method: Vec<u8>, args: Vec<u8>, gas_limit: u64) -> BackendResult<()> {
+    fn call(&self, addr: Address, method: Vec<u8>, args: Vec<u8>, amount: Vec<u8>, gas_limit: u64) -> BackendResult<()> {
+        todo!()
+    }
+
+    fn caller(&self) -> BackendResult<Vec<u8>> {
+        todo!()
+    }
+
+    fn origin_caller(&self) -> BackendResult<Vec<u8>> {
         todo!()
     }
 }
