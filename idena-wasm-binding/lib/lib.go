@@ -84,22 +84,42 @@ func Deploy(api *GoAPI, code []byte, args [][]byte, gasLimit uint64) (uint64, er
 
 func execute(api *GoAPI, code []byte, method C.ByteSliceView, args []byte, gasLimit uint64) (uint64, error) {
 	errmsg := newUnmanagedVector(nil)
+
+	action_result := newUnmanagedVector(nil)
+
 	var gasUsed cu64
-	errno := C.execute(buildAPI(api), makeView(code), method, makeView(args), cu64(gasLimit), &gasUsed, &errmsg)
+	errno := C.execute(buildAPI(api), makeView(code), method, makeView(args), cu64(gasLimit), &gasUsed, &action_result, &errmsg)
 	if errno == 0 {
-		return uint64(gasUsed), nil
+		actionResultBytes := copyAndDestroyUnmanagedVector(action_result)
+		protoModel := models.ActionResult{}
+		if err := proto.Unmarshal(actionResultBytes, &protoModel); err != nil {
+			return uint64(gasUsed), err
+		}
+		if protoModel.Success {
+			return protoModel.GasUsed, nil
+		}
+		return protoModel.GasUsed, errors.New(protoModel.Error)
 	}
 	return uint64(gasUsed), errorWithMessage(int(errno), errmsg)
 }
 
 func deploy(api *GoAPI, code []byte, args []byte, gasLimit uint64) (uint64, error) {
 	errmsg := newUnmanagedVector(nil)
+
+	action_result := newUnmanagedVector(nil)
+
 	var gasUsed cu64
-	errno := C.deploy(buildAPI(api), makeView(code), makeView(args), cu64(gasLimit), &gasUsed, &errmsg)
+	errno := C.deploy(buildAPI(api), makeView(code), makeView(args), cu64(gasLimit), &gasUsed, &action_result, &errmsg)
 	if errno == 0 {
-		return uint64(gasUsed), nil
+		actionResultBytes := copyAndDestroyUnmanagedVector(action_result)
+		protoModel := models.ActionResult{}
+		if err := proto.Unmarshal(actionResultBytes, &protoModel); err != nil {
+			return  uint64(gasUsed), err
+		}
+		if protoModel.Success {
+			return protoModel.GasUsed, nil
+		}
+		return protoModel.GasUsed, errors.New(protoModel.Error)
 	}
 	return uint64(gasUsed), errorWithMessage(int(errno), errmsg)
 }
-
-

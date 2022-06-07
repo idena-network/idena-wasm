@@ -1,4 +1,5 @@
 use std::any::type_name;
+use std::fmt::{Debug, Formatter};
 use std::slice;
 
 use wasmer::{Array, ValueType, WasmPtr};

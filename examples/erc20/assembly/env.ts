@@ -3,6 +3,9 @@ export namespace env {
     @external("env", "debug")
     export declare function print(key: i32): void
 
+    @external("env", "panic")
+    export declare function panic(msg : i32) : void
+
     //@ts-ignore
     @external("env", "set_storage")
     export declare function setStorage(key: i32, value: i32): void

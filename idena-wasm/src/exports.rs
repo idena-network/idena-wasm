@@ -3,12 +3,14 @@ use std::{mem, slice, str};
 use errno::{Errno, set_errno};
 use protobuf::Message;
 
-use crate::backend::{Address, Backend, BackendError, BackendResult, IDNA};
+use crate::args::convert_args;
+use crate::backend::{Backend, BackendError, BackendResult};
 use crate::environment::Env;
 use crate::errors::VmError;
 use crate::memory::{ByteSliceView, VmResult};
 use crate::proto;
 use crate::runner::VmRunner;
+use crate::types::{ActionResult, Address, IDNA, PromiseResult};
 
 #[repr(C)]
 pub struct gas_meter_t {
@@ -134,22 +136,39 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut UnmanagedVector, // result
     ) -> i32,
-    pub call: extern "C" fn(
-        *const api_t,
-        U8SliceView, // addr
-        U8SliceView, // method
-        U8SliceView, // args
-        U8SliceView, // amount
-        u64, // gas limit
-        *mut u64,
-    ) -> i32,
-    pub caller: extern "C" fn (
+    pub caller: extern "C" fn(
         *const api_t,
         *mut u64,
         *mut UnmanagedVector, // result
     ) -> i32,
-    pub origin_caller: extern "C" fn (
+    pub origin_caller: extern "C" fn(
         *const api_t,
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub commit: extern "C" fn(
+        *const api_t,
+    ) -> i32,
+    pub deduct_balance: extern "C" fn(
+        *const api_t,
+        U8SliceView, // amount
+        *mut u64,
+        *mut UnmanagedVector, // error
+    ) -> i32,
+    pub add_balance: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        U8SliceView, // amount
+        *mut u64,
+    ) -> i32,
+    pub contract: extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub contract_code: extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
         *mut u64,
         *mut UnmanagedVector, // result
     ) -> i32,
@@ -535,15 +554,21 @@ impl Backend for apiWrapper {
         (Ok(data.consume()), used_gas)
     }
 
-    fn call(&self, addr: Address, method: Vec<u8>, args: Vec<u8>, amount: Vec<u8>, gas_limit: u64) -> BackendResult<()> {
+    /*fn call(&self, addr: Address, method: &[u8], args: &[u8], amount: &[u8], gas_limit: u64) -> BackendResult<Receipt> {
         let mut used_gas = 0_u64;
-        let go_result = (self.api.vtable.call)(self.api.state, U8SliceView::new(Some(&addr)), U8SliceView::new(Some(&method)),
-                                               U8SliceView::new(Some(&args)), U8SliceView::new(Some(&amount)), gas_limit, &mut used_gas as *mut u64);
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.call)(self.api.state, U8SliceView::new(Some(&addr)), U8SliceView::new(Some(method)),
+                                               U8SliceView::new(Some(args)), U8SliceView::new(Some(amount)), gas_limit, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
         if go_result != 0 {
             return (Err(BackendError::new("backend error")), used_gas);
         }
-        (Ok(()), used_gas)
-    }
+
+        let res = CallFunctionResult::parse_from_bytes(&data.consume().ok_or_else(VmError::custom("call function result cannot be empty"))?)
+            .or(Err(VmError::custom("failed to parse function result")))?;
+
+
+        (Ok(res), used_gas)
+    }*/
 
     fn caller(&self) -> BackendResult<Vec<u8>> {
         let mut used_gas = 0_u64;
@@ -572,6 +597,69 @@ impl Backend for apiWrapper {
         };
         (Ok(d), used_gas)
     }
+
+    fn commit(&self) -> BackendResult<()> {
+        let go_result = (self.api.vtable.commit)(self.api.state);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), 0);
+        }
+        (Ok(()), 0)
+    }
+
+    fn deduct_balance(&self, amount: IDNA) -> BackendResult<()> {
+        let mut err = UnmanagedVector::default();
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.deduct_balance)(self.api.state, U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64, &mut err as *mut UnmanagedVector);
+        if go_result != 0 {
+            let err_data = match err.consume() {
+                Some(v) => v,
+                None => Vec::new()
+            };
+            let s = match String::from_utf8(err_data) {
+                Ok(v) => v,
+                Err(e) => "cannot parse backend error".to_string(),
+            };
+            return (Err(BackendError::new(format!("backend error: {}", s))), used_gas);
+        }
+        (Ok(()), used_gas)
+    }
+
+    fn add_balance(&self, to: Address, amount: IDNA) -> BackendResult<()> {
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.add_balance)(self.api.state, U8SliceView::new(Some(&to)), U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64);
+        if go_result != 0 {
+            return (Err(BackendError::new("unexpected backend error while adding balance")), used_gas);
+        }
+        (Ok(()), used_gas)
+    }
+
+    fn contract(&self) -> BackendResult<Address> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.contract)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        let d = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(d), used_gas)
+    }
+
+    fn contract_code(&self, contract: Address) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.contract_code)(self.api.state, U8SliceView::new(Some(&contract)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        if go_result != 0 {
+            return (Err(BackendError::new("backend error")), used_gas);
+        }
+        let d = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(d), used_gas)
+    }
 }
 
 unsafe impl Send for apiWrapper {}
@@ -579,14 +667,11 @@ unsafe impl Send for apiWrapper {}
 unsafe impl Sync for apiWrapper {}
 
 
-const ARGS_PROTOBUF_FORMAT: u8 = 0x1;
-const ARGS_PLAIN_FORMAT: u8 = 0x0;
-
 fn do_execute(api: GoApi, code: ByteSliceView,
               method_name: ByteSliceView,
               args: ByteSliceView,
               gas_limit: u64,
-              gas_used: &mut u64) -> VmResult<()> {
+              gas_used: &mut u64) -> VmResult<ActionResult> {
     let data: Vec<u8> = code.read().ok_or_else(|| VmError::custom("code is required"))?.into();
     let arguments_bytes = args.read().unwrap_or(&[]);
 
@@ -599,27 +684,18 @@ fn do_execute(api: GoApi, code: ByteSliceView,
     }
 
 
-    let args: protobuf::RepeatedField<Vec<u8>>;
-
-    match arguments_bytes[0] {
-        ARGS_PROTOBUF_FORMAT => {
-            args = proto::models::ProtoCallContractArgs::parse_from_bytes(&arguments_bytes[1..])
-                .or(Err(VmError::custom("failed to parse arguments")))?.args;
-        }
-        ARGS_PLAIN_FORMAT => { args = protobuf::RepeatedField::from_vec(vec![arguments_bytes[1..].to_vec()]); }
-        _ => return Err(VmError::custom("unknown format of args"))
-    }
+    let args = convert_args(arguments_bytes)?;
 
     println!("execute code: code len={}, method={}, args={:?}, gas limit={}", data.len(), method, args, gas_limit);
 
-    VmRunner::execute(apiWrapper::new(api), data, method.as_str(), args, gas_limit, gas_used)
+    VmRunner::execute(apiWrapper::new(api), data, &method, args, Option::<PromiseResult>::None, gas_limit, gas_used, false)
 }
 
 
 fn do_deploy(api: GoApi, code: ByteSliceView,
-              args: ByteSliceView,
-              gas_limit: u64,
-              gas_used: &mut u64) -> VmResult<()> {
+             args: ByteSliceView,
+             gas_limit: u64,
+             gas_used: &mut u64) -> VmResult<ActionResult> {
     let data: Vec<u8> = code.read().ok_or_else(|| VmError::custom("code is required"))?.into();
     let arguments_bytes = args.read().unwrap_or(&[]);
 
@@ -628,16 +704,7 @@ fn do_deploy(api: GoApi, code: ByteSliceView,
     }
 
 
-    let args: protobuf::RepeatedField<Vec<u8>>;
-
-    match arguments_bytes[0] {
-        ARGS_PROTOBUF_FORMAT => {
-            args = proto::models::ProtoCallContractArgs::parse_from_bytes(&arguments_bytes[1..])
-                .or(Err(VmError::custom("failed to parse arguments")))?.args;
-        }
-        ARGS_PLAIN_FORMAT => { args = protobuf::RepeatedField::from_vec(vec![arguments_bytes[1..].to_vec()]); }
-        _ => return Err(VmError::custom("unknown format of args"))
-    }
+    let args = convert_args(arguments_bytes)?;
 
     println!("deploy code: code len={}, args={:?}, gas limit={}", data.len(), args, gas_limit);
 
@@ -651,12 +718,15 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
                           args: ByteSliceView,
                           gas_limit: u64,
                           gas_used: &mut u64,
+                          action_result: &mut UnmanagedVector,
                           err_msg: Option<&mut UnmanagedVector>) -> u8 {
     match do_execute(api, code, method_name, args, gas_limit, gas_used) {
-        Ok(_) => 0,
+        Ok(res) => {
+            let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
+            *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
+            0
+        }
         Err(err) => {
-            *gas_used = gas_limit;
-
             if let Some(err_msg) = err_msg {
                 if err_msg.is_some() {
                     panic!(
@@ -678,17 +748,21 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
     }
 }
 
+
 #[no_mangle]
 pub extern "C" fn deploy(api: GoApi, code: ByteSliceView,
                          args: ByteSliceView,
                          gas_limit: u64,
                          gas_used: &mut u64,
+                         action_result: &mut UnmanagedVector,
                          err_msg: Option<&mut UnmanagedVector>) -> u8 {
     match do_deploy(api, code, args, gas_limit, gas_used) {
-        Ok(_) => 0,
+        Ok(res) => {
+            let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
+            *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
+            0
+        }
         Err(err) => {
-            *gas_used = gas_limit;
-
             if let Some(err_msg) = err_msg {
                 if err_msg.is_some() {
                     panic!(

@@ -13,6 +13,26 @@ type HostEnvMock struct {
 	db db.DB
 }
 
+func (e *HostEnvMock) ContractCode(meter *GasMeter, addr Address) []byte {
+	panic("implement me")
+}
+
+func (e *HostEnvMock) ContractAddress(meter *GasMeter) Address {
+	panic("implement me")
+}
+
+func (e *HostEnvMock) AddBalance(meter *GasMeter, address Address, bytes *big.Int) {
+	panic("implement me")
+}
+
+func (e *HostEnvMock) SubBalance(meter *GasMeter, amount *big.Int) error {
+	panic("implement me")
+}
+
+func (e *HostEnvMock) Revert() {
+	panic("implement me")
+}
+
 func (e *HostEnvMock) Caller(meter *GasMeter) Address {
 	panic("implement me")
 }
@@ -47,7 +67,7 @@ func (e *HostEnvMock) NetworkSize(meter *GasMeter) uint64 {
 	return 117
 }
 
-func (e *HostEnvMock) BlockSeed() []byte {
+func (e *HostEnvMock) BlockSeed(meter *GasMeter) []byte {
 	return []byte{1, 2, 3, 0x0a}
 }
 
@@ -55,7 +75,7 @@ func (e *HostEnvMock) Balance(address Address) *big.Int {
 	return big.NewInt(15)
 }
 
-func (e *HostEnvMock) MinFeePerGas() *big.Int {
+func (e *HostEnvMock) MinFeePerGas(meter *GasMeter) *big.Int {
 	return big.NewInt(10)
 }
 
@@ -94,10 +114,10 @@ func (e *HostEnvMock) RemoveStorage(meter *GasMeter, key []byte) {
 func NewMockAPI() *GoAPI {
 	meter := GasMeter{}
 	return &GoAPI{
-		host: &HostEnvMock{
+		&HostEnvMock{
 			db: db.NewMemDB(),
 		},
-		gasMeter: &meter,
+		&meter,
 	}
 }
 

@@ -20,17 +20,22 @@ type HostEnv interface {
 	BlockNumber(*GasMeter) uint64
 	BlockTimestamp(*GasMeter) int64
 	Send(*GasMeter, Address, *big.Int) error
-	MinFeePerGas() *big.Int
+	MinFeePerGas(meter *GasMeter) *big.Int
 	Balance(address Address) *big.Int
-	BlockSeed() []byte
+	BlockSeed(meter *GasMeter) []byte
 	NetworkSize(meter *GasMeter) uint64
 	IdentityState(meter *GasMeter, address Address) byte
 	Identity(meter *GasMeter, address Address) []byte
 	CreateSubEnv(contract Address, payAmount *big.Int) (HostEnv, error)
 	GetCode(addr Address) []byte
 	Commit()
+	Revert()
 	Caller(meter *GasMeter) Address
 	OriginCaller(meter *GasMeter) Address
+	SubBalance(meter *GasMeter, amount *big.Int) error
+	AddBalance(meter *GasMeter, address Address, bytes *big.Int)
+	ContractAddress(meter *GasMeter) Address
+	ContractCode(meter *GasMeter, addr Address) []byte
 }
 
 type GasMeter struct {

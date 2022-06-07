@@ -4,11 +4,21 @@ import { debug } from "./debug";
 import { env } from "./env";
 import { PersistentMap, StringKey } from "./persistentMap";
 import { Region } from "./region";
+import {util} from "./utils";
 
 const balances = new PersistentMap<Address>("b:");
 const approves = new PersistentMap<StringKey>("a:");
 
 const TOTAL_SUPPLY: u64 = 7777777;
+
+
+function assert(value : bool, msg : string) : void {
+  if (!value) {
+    let r = new Region(util.stringToBytes(msg))
+    env.panic(changetype<usize>(r))
+  }
+}
+
 
 function ptrToBytes(ptr: i32): Bytes {
   let region = changetype<Region>(ptr);

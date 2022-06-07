@@ -1,3 +1,4 @@
+use protobuf::reflect::ProtobufValue;
 use wasmer::{Array, Memory, WasmPtr};
 
 use crate::backend::Backend;
@@ -5,8 +6,9 @@ use crate::environment::Env;
 use crate::errors::VmError;
 use crate::exports::gas_meter_t;
 use crate::memory::{read_region, ref_to_u32, to_u32, VmResult, write_region};
+use crate::types::PromiseResult;
 
-const MAX_STORAGE_KEY_SIZE: usize = 100;
+const MAX_STORAGE_KEY_SIZE: usize = 32;
 const MAX_ADDRESS_SIZE: usize = 20;
 const MAX_IDNA_SIZE: usize = 32;
 const MAX_STORAGE_VALUE_SIZE: usize = 128 * 1024;
@@ -206,7 +208,7 @@ pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
         Err(_) => Ok(1),
     }
 }
-
+/*
 pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, gas_limit: u32) -> VmResult<u8> {
     println!("{} {} {} {}", addr, method, args, gas_limit);
 
@@ -227,9 +229,9 @@ pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, gas_lim
         Ok(_) => Ok(0),
         Err(_) => Ok(1),
     }
-}
+}*/
 
-pub fn caller<B:Backend>(env : &Env<B>) -> VmResult<u32> {
+pub fn caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
     env.backend.set_remaining_gas(gas_left);
     let (res, gas) = env.backend.caller();
@@ -238,7 +240,7 @@ pub fn caller<B:Backend>(env : &Env<B>) -> VmResult<u32> {
     write_to_contract(env, &value)
 }
 
-pub fn origin_caller<B:Backend>(env : &Env<B>) -> VmResult<u32> {
+pub fn origin_caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
     env.backend.set_remaining_gas(gas_left);
     let (res, gas) = env.backend.origin_caller();
@@ -262,9 +264,74 @@ pub fn abort<B: Backend>(env: &Env<B>, msg: u32, filePtr: u32, line: u32, col: u
 pub fn panic<B: Backend>(env: &Env<B>, msg: u32) -> VmResult<()> {
     let message_data = read_region(&env.memory(), msg, 1024)?;
     let msg = String::from_utf8_lossy(&message_data);
+
+    println!("wasm panicked: {}", msg);
+
     Err(VmError::wasm_err(msg))
 }
 
+pub fn promise_result<B: Backend>(env: &Env<B>, result: u32) -> VmResult<i32> {
+    Ok(match &env.promise_result {
+        Some(v) => {
+            match v {
+                PromiseResult::Empty => 1,
+                PromiseResult::Failed => 0,
+                PromiseResult::Value(data) => {
+                    write_region(&env.memory(), result, &data);
+                    2
+                }
+            }
+        }
+        None => 1
+    })
+}
+
+pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, amount: u32, gas_limit: u32) -> VmResult<u32> {
+    let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
+    let method = read_region(&env.memory(), method, 1024)?;
+    let args = read_region(&env.memory(), args, 1024)?;
+    let amountValue = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
+
+    if !amountValue.is_empty() {
+        let gas_left = env.get_gas_left();
+        env.backend.set_remaining_gas(gas_left);
+        let (res, gas) = env.backend.deduct_balance(amountValue.to_vec());
+        res?;
+        process_gas_info(env, gas)?;
+    }
+    let idx = env.create_function_call_promise(to, method, args, amountValue, gas_limit as u64);
+    process_gas_info(env, gas_limit as u64)?;
+    Ok(idx)
+}
+
+pub fn promise_then<B: Backend>(env: &Env<B>, promise_idx: u32, method: u32, args: u32, amount: u32, gas_limit: u32) -> VmResult<()> {
+    let method = read_region(&env.memory(), method, 1024)?;
+    let args = read_region(&env.memory(), args, 1024)?;
+    let amount = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
+
+    if !amount.is_empty() {
+        let gas_left = env.get_gas_left();
+        env.backend.set_remaining_gas(gas_left);
+        let (res, gas) = env.backend.deduct_balance(amount.to_vec());
+        res?;
+        process_gas_info(env, gas)?;
+    }
+
+    env.promise_then(promise_idx as usize, method, args, amount, gas_limit as u64);
+    process_gas_info(env, gas_limit as u64)
+}
+
+pub fn create_transfer_promise<B: Backend>(env: &Env<B>, addr: u32, amount: u32) -> VmResult<()> {
+    let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
+    let amount = read_region(&env.memory(), amount, MAX_IDNA_SIZE)?;
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.deduct_balance(amount.to_vec());
+    res?;
+    process_gas_info(env, gas)?;
+    env.create_transfer_promise(to, amount);
+    Ok(())
+}
 
 
 

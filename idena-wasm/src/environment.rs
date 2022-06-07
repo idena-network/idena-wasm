@@ -6,10 +6,13 @@ use std::sync::{Arc, RwLock};
 use wasmer::{HostEnvInitError, Instance, Memory, Val, WasmerEnv};
 use wasmer_middlewares::metering::{get_remaining_points, MeteringPoints, set_remaining_points};
 
-use crate::backend::Backend;
+use crate::backend::{Backend};
+use crate::types::{Address, IDNA};
 use crate::errors;
 use crate::errors::VmError;
+use crate::imports::write_to_contract;
 use crate::memory::VmResult;
+use crate::types::{Action, FunctionCallAction, Promise, PromiseResult, TransferAction};
 
 #[derive(Debug)]
 pub enum Never {}
@@ -17,14 +20,16 @@ pub enum Never {}
 pub struct Env<B: Backend> {
     pub backend: B,
     data: Arc<RwLock<ContextData>>,
+    pub promise_result: Option<PromiseResult>,
 }
 
 
 impl<B: Backend> Env<B> {
-    pub fn new(api: B) -> Self {
+    pub fn new(api: B, promise_res: Option<PromiseResult>) -> Self {
         Env {
             backend: api,
             data: Arc::new(RwLock::new(ContextData::new())),
+            promise_result: promise_res,
         }
     }
 
@@ -129,6 +134,66 @@ impl<B: Backend> Env<B> {
         }
         Ok(result[0].clone())
     }
+
+    pub fn create_transfer_promise(&self, to: Address, amount: IDNA) {
+        self.with_context_data_mut(|data| {
+            data.pending_promises.push(Promise {
+                receiver_Id: to,
+                action: Action::Transfer(TransferAction {
+                    amount
+                }),
+                action_callback: None,
+            })
+        })
+    }
+    pub fn create_function_call_promise(&self, to: Address, method: Vec<u8>, args: Vec<u8>, amount: IDNA, gas_limit: u64) -> u32 {
+        self.with_context_data_mut(|data| {
+            data.pending_promises.push(Promise {
+                receiver_Id: to,
+                action: Action::FunctionCall(FunctionCallAction {
+                    gas_limit,
+                    args,
+                    method_name: String::from_utf8_lossy(&method).to_string(),
+                    deposit: amount,
+                }),
+                action_callback: None,
+            });
+            data.pending_promises.len() as u32 - 1
+        })
+    }
+
+    pub fn promise_then(&self, promise_idx: usize, method: Vec<u8>, args: Vec<u8>, amount: IDNA, gas_limit: u64) -> VmResult<()> {
+        self.with_context_data_mut(|data| {
+            match data.pending_promises.get_mut(promise_idx) {
+                Some(promise) => if promise.action_callback.is_some() {
+                    return Err(VmError::custom("promise is completed"));
+                } else {
+                    promise.action_callback = Some(Action::FunctionCall(FunctionCallAction {
+                        gas_limit,
+                        args,
+                        method_name: String::from_utf8_lossy(&method).to_string(),
+                        deposit: amount,
+                    }));
+                    Ok(())
+                }
+                None => Err(VmError::custom("invalid promise_idx"))
+            }
+        })
+    }
+
+    pub fn get_promises(&self) -> Vec<Promise> {
+        let mut result = Vec::new();
+        self.with_context_data_mut(|data| {
+            result = data.pending_promises.to_vec()
+        });
+        result
+    }
+
+    pub fn clear_promises(&self) {
+        self.with_context_data_mut(|data| {
+            data.pending_promises = Vec::new()
+        });
+    }
 }
 
 impl<B: Backend> Clone for Env<B> {
@@ -136,6 +201,7 @@ impl<B: Backend> Clone for Env<B> {
         Env {
             backend: self.backend,
             data: self.data.clone(),
+            promise_result: self.promise_result.clone(),
         }
     }
 }
@@ -152,12 +218,14 @@ impl<B: Backend> WasmerEnv for Env<B> {
 
 pub struct ContextData {
     wasmer_instance: Option<NonNull<Instance>>,
+    pending_promises: Vec<Promise>,
 }
 
 impl ContextData {
     pub fn new() -> Self {
         ContextData {
             wasmer_instance: None,
+            pending_promises: Vec::new(),
         }
     }
 }

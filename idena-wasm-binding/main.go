@@ -1,6 +1,6 @@
 package main
 
-import "idena-wasm-binding/lib"
+import "github.com/idena-network/idena-wasm-binding/lib"
 
 func main() {
 	a, _ := lib.Testdata1()

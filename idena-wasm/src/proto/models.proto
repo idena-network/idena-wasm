@@ -1,6 +1,26 @@
+// protoc --rust_out . .\models.proto
+
 syntax = "proto3";
 package models;
 
 message ProtoCallContractArgs {
   repeated bytes args = 1;
+}
+
+message Action {
+  uint32 action_type = 1;
+  bytes amount = 2;
+  string method = 3;
+  bytes args = 4;
+  uint64 gas_limit = 5;
+}
+
+message ActionResult {
+  Action input_action = 1;
+  bool success = 2;
+  string error = 3;
+  uint64 gas_used = 4;
+  bytes output_data = 5;
+  bytes remain_gas_cost = 6;
+  repeated ActionResult sub_action_results = 7;
 }

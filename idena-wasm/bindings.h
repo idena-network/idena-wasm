@@ -9,6 +9,10 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define ACTION_FUNCTION_CALL 1
+
+#define ACTION_TRANSFER 2
+
 /**
  * This enum gives names to the status codes returned from Go callbacks to Rust.
  *
@@ -88,9 +92,13 @@ typedef struct GoApi_vtable {
   int32_t (*move_to_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*delegatee)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*identity)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
-  int32_t (*call)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t, uint64_t*);
   int32_t (*caller)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*origin_caller)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*commit)(const struct api_t*);
+  int32_t (*deduct_balance)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*add_balance)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*);
+  int32_t (*contract)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*contract_code)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {
@@ -118,6 +126,7 @@ uint8_t execute(struct GoApi api,
                 struct ByteSliceView args,
                 uint64_t gas_limit,
                 uint64_t *gas_used,
+                struct UnmanagedVector *action_result,
                 struct UnmanagedVector *err_msg);
 
 uint8_t deploy(struct GoApi api,
@@ -125,4 +134,5 @@ uint8_t deploy(struct GoApi api,
                struct ByteSliceView args,
                uint64_t gas_limit,
                uint64_t *gas_used,
+               struct UnmanagedVector *action_result,
                struct UnmanagedVector *err_msg);
