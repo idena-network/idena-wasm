@@ -1,0 +1,15 @@
+syntax = "proto3";
+package models;
+
+//protoc --plugin=protoc-gen-as=/d/Projects/idena/idena-sdk-as/node_modules/.bin/as-proto-gen.cmd assembly/proto/models.proto --as_out=.
+
+message ProtoStateIdentity {    
+    bytes stake = 1;  
+    uint32 birthday = 3;
+    uint32 state = 4;  
+}
+
+message ProtoTransactionIndex {
+    bytes blockHash = 1;
+    uint32 idx = 2;
+}

@@ -6,12 +6,13 @@ use std::sync::{Arc, RwLock};
 use wasmer::{HostEnvInitError, Instance, Memory, Val, WasmerEnv};
 use wasmer_middlewares::metering::{get_remaining_points, MeteringPoints, set_remaining_points};
 
-use crate::backend::{Backend};
-use crate::types::{Address, IDNA};
-use crate::errors;
+use crate::{errors, unwrap_or_return};
+use crate::backend::{Backend, BackendError, BackendResult};
+use crate::costs::BASE_PROMISE_COST;
 use crate::errors::VmError;
-use crate::imports::write_to_contract;
+use crate::imports::{process_gas_info, write_to_contract};
 use crate::memory::VmResult;
+use crate::types::{Address, DeployContractAction, IDNA};
 use crate::types::{Action, FunctionCallAction, Promise, PromiseResult, TransferAction};
 
 #[derive(Debug)]
@@ -135,21 +136,30 @@ impl<B: Backend> Env<B> {
         Ok(result[0].clone())
     }
 
-    pub fn create_transfer_promise(&self, to: Address, amount: IDNA) {
+    pub fn create_transfer_promise(&self, to: Address, amount: IDNA) -> BackendResult<()> {
+        let (own_addr_res, gas_used) = self.backend.contract();
+        let own_addr = unwrap_or_return!(own_addr_res, gas_used);
         self.with_context_data_mut(|data| {
             data.pending_promises.push(Promise {
-                receiver_Id: to,
+                predecessor_id: own_addr,
+                receiver_id: to,
                 action: Action::Transfer(TransferAction {
                     amount
                 }),
                 action_callback: None,
             })
-        })
+        });
+        (Ok(()), gas_used.saturating_add(BASE_PROMISE_COST))
     }
-    pub fn create_function_call_promise(&self, to: Address, method: Vec<u8>, args: Vec<u8>, amount: IDNA, gas_limit: u64) -> u32 {
+
+
+    pub fn create_function_call_promise(&self, to: Address, method: Vec<u8>, args: Vec<u8>, amount: IDNA, gas_limit: u64) -> BackendResult<u32> {
+        let (own_addr_res, gas_used) = self.backend.contract();
+        let own_addr = unwrap_or_return!(own_addr_res, gas_used);
         self.with_context_data_mut(|data| {
             data.pending_promises.push(Promise {
-                receiver_Id: to,
+                predecessor_id: own_addr,
+                receiver_id: to,
                 action: Action::FunctionCall(FunctionCallAction {
                     gas_limit,
                     args,
@@ -158,15 +168,40 @@ impl<B: Backend> Env<B> {
                 }),
                 action_callback: None,
             });
-            data.pending_promises.len() as u32 - 1
+            (Ok(data.pending_promises.len() as u32 - 1), gas_used.saturating_add(BASE_PROMISE_COST))
         })
     }
 
-    pub fn promise_then(&self, promise_idx: usize, method: Vec<u8>, args: Vec<u8>, amount: IDNA, gas_limit: u64) -> VmResult<()> {
+    pub fn create_deploy_contract_promise(&self, code: Vec<u8>, args: Vec<u8>, nonce: Vec<u8>, amount: IDNA, gas_limit: u64) -> BackendResult<u32> {
+        let (own_addr_res, mut gas_used) = self.backend.contract();
+        let own_addr = unwrap_or_return!(own_addr_res, gas_used);
+
+        let (to_res, gas) = self.backend.contract_addr(&code, &args, &nonce);
+        gas_used += gas;
+        let to = unwrap_or_return!(to_res, gas_used);
+
+        self.with_context_data_mut(|data| {
+            data.pending_promises.push(Promise {
+                predecessor_id: own_addr,
+                receiver_id: to,
+                action: Action::DeployContract(DeployContractAction {
+                    code,
+                    nonce,
+                    gas_limit,
+                    args,
+                    deposit: amount,
+                }),
+                action_callback: None,
+            });
+            (Ok(data.pending_promises.len() as u32 - 1), gas_used.saturating_add(BASE_PROMISE_COST))
+        })
+    }
+
+    pub fn promise_then(&self, promise_idx: usize, method: Vec<u8>, args: Vec<u8>, amount: IDNA, gas_limit: u64) -> BackendResult<()> {
         self.with_context_data_mut(|data| {
             match data.pending_promises.get_mut(promise_idx) {
                 Some(promise) => if promise.action_callback.is_some() {
-                    return Err(VmError::custom("promise is completed"));
+                    return (Err(BackendError::new("promise is completed")), BASE_PROMISE_COST);
                 } else {
                     promise.action_callback = Some(Action::FunctionCall(FunctionCallAction {
                         gas_limit,
@@ -174,9 +209,9 @@ impl<B: Backend> Env<B> {
                         method_name: String::from_utf8_lossy(&method).to_string(),
                         deposit: amount,
                     }));
-                    Ok(())
+                    (Ok(()), BASE_PROMISE_COST)
                 }
-                None => Err(VmError::custom("invalid promise_idx"))
+                None => (Err(BackendError::new("invalid promise_idx")), BASE_PROMISE_COST)
             }
         })
     }

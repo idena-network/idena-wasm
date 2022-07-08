@@ -20,7 +20,7 @@ message ActionResult {
   bool success = 2;
   string error = 3;
   uint64 gas_used = 4;
-  bytes output_data = 5;
-  bytes remain_gas_cost = 6;
+  uint64 remaining_gas = 5;
+  bytes output_data = 6;
   repeated ActionResult sub_action_results = 7;
 }

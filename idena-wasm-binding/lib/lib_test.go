@@ -37,11 +37,11 @@ func (e *HostEnvMock) Caller(meter *GasMeter) Address {
 	panic("implement me")
 }
 
-func (e *HostEnvMock) OriginCaller(meter *GasMeter) Address {
+func (e *HostEnvMock) OriginalCaller(meter *GasMeter) Address {
 	panic("implement me")
 }
 
-func (e *HostEnvMock) CreateSubEnv(Address, *big.Int) (HostEnv, error) {
+func (e *HostEnvMock) CreateSubEnv(Address, *big.Int) (*HostEnvMock, error) {
 	return &HostEnvMock{
 		db: e.db,
 	}, nil

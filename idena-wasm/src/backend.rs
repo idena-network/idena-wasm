@@ -4,24 +4,32 @@ use std::ops::Add;
 use thiserror::Error;
 
 use crate::environment::Env;
-use crate::types::{Address, IDNA};
+use crate::types::{ActionResult, Address, IDNA};
 
 #[derive(Error, Debug)]
-pub struct BackendError {
-    msg: String,
+pub enum BackendError {
+    Custom { msg: String },
+    OutOfGas,
 }
 
 impl Display for BackendError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.msg)
+        match self {
+            BackendError::Custom { msg } => write!(f, "{}", msg),
+            BackendError::OutOfGas => write!(f, "out_of_gas")
+        }
     }
 }
 
 impl BackendError {
     pub fn new(msg: impl Into<String>) -> Self {
-        BackendError {
+        BackendError::Custom {
             msg: msg.into()
         }
+    }
+
+    pub fn out_of_gas() -> Self {
+        BackendError::OutOfGas
     }
 }
 
@@ -48,14 +56,16 @@ pub trait Backend: Copy + Clone + Send {
     fn move_to_stake(&self, amount: IDNA) -> BackendResult<()>;
     fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>>;
     fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>>;
-    //fn call(&self, addr: Address, method: &[u8], args:&[u8], amount: &[u8], gas_limit: u64) -> BackendResult<Receipt>;
+    fn call(&self, addr: Address, method: &[u8], args: &[u8], amount: &[u8], gas_limit: u64, invocation_ctx: &[u8]) -> BackendResult<ActionResult>;
     fn caller(&self) -> BackendResult<Vec<u8>>;
-    fn origin_caller(&self) -> BackendResult<Vec<u8>>;
+    fn original_caller(&self) -> BackendResult<Vec<u8>>;
     fn commit(&self) -> BackendResult<()>;
     fn deduct_balance(&self, amount: IDNA) -> BackendResult<()>;
     fn add_balance(&self, to: Address, amount: IDNA) -> BackendResult<()>;
     fn contract(&self) -> BackendResult<Address>;
     fn contract_code(&self, contract: Address) -> BackendResult<Vec<u8>>;
+    fn contract_addr(&self, code:  &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address>;
+    fn deploy(&self, code : &[u8], args: &[u8], nonce: &[u8], amount: &[u8], gas_limit: u64) -> BackendResult<ActionResult>;
 }
 
 pub struct MockBackend {}
@@ -157,10 +167,14 @@ impl Backend for MockBackend {
         todo!()
     }
 
+    fn call(&self, addr: Address, method: &[u8], args: &[u8], amount: &[u8], gas_limit: u64, invocation_ctx: &[u8]) -> BackendResult<ActionResult> {
+        todo!()
+    }
+
     fn caller(&self) -> BackendResult<Vec<u8>> {
         (Ok(vec![1, 2, 3]), 10)
     }
-    fn origin_caller(&self) -> BackendResult<Vec<u8>> {
+    fn original_caller(&self) -> BackendResult<Vec<u8>> {
         todo!()
     }
 
@@ -182,6 +196,14 @@ impl Backend for MockBackend {
     }
 
     fn contract_code(&self, contract: Address) -> BackendResult<Vec<u8>> {
+        todo!()
+    }
+
+    fn contract_addr(&self, code: &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address> {
+        todo!()
+    }
+
+    fn deploy(&self, code: &[u8], args: &[u8], nonce: &[u8], amount: &[u8], gas_limit: u64) -> BackendResult<ActionResult> {
         todo!()
     }
 }

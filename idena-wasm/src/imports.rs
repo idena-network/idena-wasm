@@ -6,7 +6,8 @@ use crate::environment::Env;
 use crate::errors::VmError;
 use crate::exports::gas_meter_t;
 use crate::memory::{read_region, ref_to_u32, to_u32, VmResult, write_region};
-use crate::types::PromiseResult;
+use crate::types::{ActionResult, PromiseResult};
+use crate::unwrap_or_return;
 
 const MAX_STORAGE_KEY_SIZE: usize = 32;
 const MAX_ADDRESS_SIZE: usize = 20;
@@ -57,7 +58,7 @@ pub fn set_storage<B: Backend>(env: &Env<B>, key: u32, value: u32) -> VmResult<(
     env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.set_storage(key, value);
-
+    println!("set_storage used_gas {}", gas);
     process_gas_info(env, gas)?;
 
     result?;
@@ -120,6 +121,18 @@ pub fn block_number<B: Backend>(env: &Env<B>) -> VmResult<u64> {
     process_gas_info(env, gas)?;
 
     Ok(result?)
+}
+
+pub fn block_seed<B: Backend>(env: &Env<B>) -> VmResult<u32> {
+    let gas_left = env.get_gas_left();
+
+    env.backend.set_remaining_gas(gas_left);
+
+    let (result, gas) = env.backend.block_seed();
+
+    process_gas_info(env, gas)?;
+
+    write_to_contract(env, &result?)
 }
 
 pub fn min_fee_per_gas<B: Backend>(env: &Env<B>) -> VmResult<u32> {
@@ -193,7 +206,7 @@ pub fn identity<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u32> {
     };
     write_to_contract(env, &out_data)
 }
-
+/*
 pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
     let to = read_region(&env.memory(), to, MAX_ADDRESS_SIZE)?;
 
@@ -208,27 +221,20 @@ pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
         Err(_) => Ok(1),
     }
 }
-/*
-pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, gas_limit: u32) -> VmResult<u8> {
+
+pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, amount: u32, gas_limit: u32) -> VmResult<ActionResult> {
     println!("{} {} {} {}", addr, method, args, gas_limit);
 
     let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
     let method = read_region(&env.memory(), method, 1024)?;
 
-    let args = read_region(&env.memory(), args, 1024)?;
-    let gas_left = env.get_gas_left();
-    if gas_left < gas_limit.into() {
-        return Err(VmError::custom("not enough gas"));
-    }
+    let amount = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
 
-    env.backend.set_remaining_gas(gas_left);
-    let (res, gas) = env.backend.call(to, method, args, Vec::new(), gas_limit.into());
-    println!("sub call used gas {}", gas);
-    process_gas_info(env, gas)?;
-    match res {
-        Ok(_) => Ok(0),
-        Err(_) => Ok(1),
-    }
+    let args = read_region(&env.memory(), args, 1024)?;
+
+    let (res, _) = env.backend.call(to, &method, &args, &amount, gas_limit.into(), );
+
+    Ok(res?)
 }*/
 
 pub fn caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
@@ -240,10 +246,10 @@ pub fn caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     write_to_contract(env, &value)
 }
 
-pub fn origin_caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
+pub fn original_caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
     env.backend.set_remaining_gas(gas_left);
-    let (res, gas) = env.backend.origin_caller();
+    let (res, gas) = env.backend.original_caller();
     process_gas_info(env, gas)?;
     let value = res?;
     write_to_contract(env, &value)
@@ -296,11 +302,33 @@ pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method:
         let gas_left = env.get_gas_left();
         env.backend.set_remaining_gas(gas_left);
         let (res, gas) = env.backend.deduct_balance(amountValue.to_vec());
-        res?;
         process_gas_info(env, gas)?;
+        res?;
     }
-    let idx = env.create_function_call_promise(to, method, args, amountValue, gas_limit as u64);
+    let idx_res = env.create_function_call_promise(to, method, args, amountValue, gas_limit as u64);
+    let idx = idx_res.0?;
     process_gas_info(env, gas_limit as u64)?;
+    process_gas_info(env, idx_res.1)?;
+    Ok(idx)
+}
+
+pub fn create_deploy_contract_promise<B: Backend>(env: &Env<B>, code: u32, args: u32, nonce: u32, amount: u32, gas_limit: u32) -> VmResult<u32> {
+    let code = read_region(&env.memory(), code, MAX_ADDRESS_SIZE)?;
+    let args = read_region(&env.memory(), args, 1024)?;
+    let nonce = read_region(&env.memory(), nonce, 1024)?;
+    let amountValue = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
+
+    if !amountValue.is_empty() {
+        let gas_left = env.get_gas_left();
+        env.backend.set_remaining_gas(gas_left);
+        let (res, gas) = env.backend.deduct_balance(amountValue.to_vec());
+        process_gas_info(env, gas)?;
+        res?;
+    }
+    let idx_res = env.create_deploy_contract_promise(code, args, nonce, amountValue, gas_limit as u64);
+    let idx = idx_res.0?;
+    process_gas_info(env, gas_limit as u64)?;
+    process_gas_info(env, idx_res.1)?;
     Ok(idx)
 }
 
@@ -313,8 +341,8 @@ pub fn promise_then<B: Backend>(env: &Env<B>, promise_idx: u32, method: u32, arg
         let gas_left = env.get_gas_left();
         env.backend.set_remaining_gas(gas_left);
         let (res, gas) = env.backend.deduct_balance(amount.to_vec());
-        res?;
         process_gas_info(env, gas)?;
+        res?;
     }
 
     env.promise_then(promise_idx as usize, method, args, amount, gas_limit as u64);
@@ -327,10 +355,22 @@ pub fn create_transfer_promise<B: Backend>(env: &Env<B>, addr: u32, amount: u32)
     let gas_left = env.get_gas_left();
     env.backend.set_remaining_gas(gas_left);
     let (res, gas) = env.backend.deduct_balance(amount.to_vec());
-    res?;
     process_gas_info(env, gas)?;
+    res?;
     env.create_transfer_promise(to, amount);
     Ok(())
+}
+
+pub fn contract<B: Backend>(env: &Env<B>) -> VmResult<u32> {
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.contract();
+    process_gas_info(env, gas)?;
+    let addr = match res {
+        Ok(v) => v,
+        Err(err) => return Err(err.into())
+    };
+    write_to_contract(env, &addr)
 }
 
 

@@ -1,7 +1,8 @@
-use crate::proto::models::{Action as protoAction, ActionResult as protoActionResult};
+use crate::proto::models::{Action as protoAction, ActionResult as protoActionResult, InvocationContext as protoContext, PromiseResult as protoPromiseResult};
 
 pub const ACTION_FUNCTION_CALL: u8 = 1;
 pub const ACTION_TRANSFER: u8 = 2;
+pub const ACTION_DEPLOY_CONTRACT: u8 = 3;
 
 
 pub type IDNA = Vec<u8>;
@@ -12,6 +13,8 @@ pub type Gas = u64;
 
 #[derive(Clone, Debug)]
 pub enum Action {
+    None,
+    DeployContract(DeployContractAction),
     FunctionCall(FunctionCallAction),
     Transfer(TransferAction),
 }
@@ -19,6 +22,15 @@ pub enum Action {
 #[derive(Clone, Debug)]
 pub struct FunctionCallAction {
     pub method_name: String,
+    pub args: Vec<u8>,
+    pub gas_limit: Gas,
+    pub deposit: IDNA,
+}
+
+#[derive(Clone, Debug)]
+pub struct DeployContractAction {
+    pub code: Vec<u8>,
+    pub nonce: Vec<u8>,
     pub args: Vec<u8>,
     pub gas_limit: Gas,
     pub deposit: IDNA,
@@ -53,6 +65,7 @@ pub enum ReceiptEnum {
 pub struct ActionResult {
     pub input_action: Action,
     pub gas_used: Gas,
+    pub remaining_gas: Gas,
     pub success: bool,
     pub error: String,
     pub output_data: Vec<u8>,
@@ -67,7 +80,7 @@ impl Into<protoActionResult> for &ActionResult {
         proto.output_data = self.output_data.clone();
         proto.success = self.success;
         proto.error = self.error.clone();
-
+        proto.remaining_gas = self.remaining_gas;
         for sub_res in self.sub_action_results.iter() {
             proto.sub_action_results.push(sub_res.into());
         }
@@ -75,6 +88,21 @@ impl Into<protoActionResult> for &ActionResult {
         proto
     }
 }
+
+impl From<protoActionResult> for ActionResult {
+    fn from(action_res: protoActionResult) -> Self {
+        ActionResult {
+            input_action: action_res.input_action.unwrap_or_default().into(),
+            success: action_res.success,
+            remaining_gas: action_res.remaining_gas,
+            gas_used: action_res.gas_used,
+            sub_action_results: action_res.sub_action_results.into_iter().map(|a| a.into()).collect(),
+            error: action_res.error,
+            output_data: action_res.output_data,
+        }
+    }
+}
+
 
 impl Into<protoAction> for &Action {
     fn into(self) -> protoAction {
@@ -89,15 +117,63 @@ impl Into<protoAction> for &Action {
                     proto.gas_limit = call.gas_limit;
                     proto
                 }
+            Action::DeployContract(deploy) => {
+                let mut proto = protoAction::default();
+                proto.action_type = ACTION_DEPLOY_CONTRACT as u32;
+                proto.code = deploy.code.clone();
+                proto.amount = deploy.deposit.clone();
+                proto.args = deploy.args.clone();
+                proto.gas_limit = deploy.gas_limit;
+                proto.nonce = deploy.nonce.clone();
+                proto
+            }
             Action::Transfer(transfer) => {
                 let mut proto = protoAction::default();
                 proto.action_type = ACTION_TRANSFER as u32;
                 proto.amount = transfer.amount.clone();
                 proto
             }
+            _ => protoAction::default()
         }
     }
 }
+
+impl From<protoAction> for Action {
+    fn from(action: protoAction) -> Self {
+        match action.action_type as u8 {
+            ACTION_FUNCTION_CALL => {
+                Action::FunctionCall(FunctionCallAction {
+                    gas_limit: action.gas_limit,
+                    args: action.args,
+                    method_name: action.method,
+                    deposit: action.amount,
+                })
+            }
+
+            ACTION_DEPLOY_CONTRACT => {
+                Action::DeployContract(DeployContractAction {
+                    gas_limit: action.gas_limit,
+                    args: action.args,
+                    code: action.code,
+                    deposit: action.amount,
+                    nonce: action.nonce,
+                })
+            }
+
+            ACTION_TRANSFER => Action::Transfer(TransferAction {
+                amount: action.amount,
+            }),
+            _ => { unreachable!() }
+        }
+    }
+}
+
+impl Default for Action {
+    fn default() -> Self {
+        Action::None
+    }
+}
+
 
 impl ActionResult {
     pub(crate) fn append_sub_action_results(&mut self, results: Vec<ActionResult>) {
@@ -115,10 +191,80 @@ pub enum PromiseResult {
 
 #[derive(Clone)]
 pub struct Promise {
-    pub receiver_Id: Address,
+    pub predecessor_id: Address,
+    pub receiver_id: Address,
     pub action: Action,
     pub action_callback: Option<Action>,
 }
+
+
+pub struct InvocationContext {
+    pub is_callback: bool,
+    pub promise_result: Option<PromiseResult>,
+}
+
+impl From<protoPromiseResult> for PromiseResult {
+    fn from(promise_res: protoPromiseResult) -> Self {
+        if !promise_res.success {
+            return PromiseResult::Failed;
+        }
+        if promise_res.data.is_empty() {
+            return PromiseResult::Empty;
+        }
+        return PromiseResult::Value(promise_res.data);
+    }
+}
+
+impl Into<protoPromiseResult> for &PromiseResult {
+    fn into(self) -> protoPromiseResult {
+        let mut res = protoPromiseResult::default();
+        match self {
+            PromiseResult::Empty => {
+                res.success = true
+            }
+            PromiseResult::Value(val) => {
+                res.success = true;
+                res.set_data(val.clone());
+            }
+            PromiseResult::Failed => {}
+        };
+        res
+    }
+}
+
+impl From<protoContext> for InvocationContext {
+    fn from(ctx: protoContext) -> Self {
+        InvocationContext {
+            is_callback: ctx.is_callback,
+            promise_result: Some(ctx.promise_result.unwrap_or_default().into()),
+        }
+    }
+}
+
+impl Into<protoContext> for InvocationContext {
+    fn into(self) -> protoContext {
+        let mut ctx = protoContext::default();
+        ctx.is_callback = self.is_callback;
+        match self.promise_result {
+            Some(v) => ctx.set_promise_result((&v).into()),
+            _ => {}
+        }
+        ctx
+    }
+}
+
+impl Default for InvocationContext {
+    fn default() -> Self {
+        InvocationContext {
+            is_callback: false,
+            promise_result: None,
+        }
+    }
+}
+
+
+
+
 
 
 

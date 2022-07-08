@@ -189,6 +189,8 @@ pub struct Action {
     pub method: ::std::string::String,
     pub args: ::std::vec::Vec<u8>,
     pub gas_limit: u64,
+    pub code: ::std::vec::Vec<u8>,
+    pub nonce: ::std::vec::Vec<u8>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
     pub cached_size: ::protobuf::CachedSize,
@@ -312,6 +314,58 @@ impl Action {
     pub fn set_gas_limit(&mut self, v: u64) {
         self.gas_limit = v;
     }
+
+    // bytes code = 6;
+
+
+    pub fn get_code(&self) -> &[u8] {
+        &self.code
+    }
+    pub fn clear_code(&mut self) {
+        self.code.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_code(&mut self, v: ::std::vec::Vec<u8>) {
+        self.code = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_code(&mut self) -> &mut ::std::vec::Vec<u8> {
+        &mut self.code
+    }
+
+    // Take field
+    pub fn take_code(&mut self) -> ::std::vec::Vec<u8> {
+        ::std::mem::replace(&mut self.code, ::std::vec::Vec::new())
+    }
+
+    // bytes nonce = 7;
+
+
+    pub fn get_nonce(&self) -> &[u8] {
+        &self.nonce
+    }
+    pub fn clear_nonce(&mut self) {
+        self.nonce.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_nonce(&mut self, v: ::std::vec::Vec<u8>) {
+        self.nonce = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_nonce(&mut self) -> &mut ::std::vec::Vec<u8> {
+        &mut self.nonce
+    }
+
+    // Take field
+    pub fn take_nonce(&mut self) -> ::std::vec::Vec<u8> {
+        ::std::mem::replace(&mut self.nonce, ::std::vec::Vec::new())
+    }
 }
 
 impl ::protobuf::Message for Action {
@@ -346,6 +400,12 @@ impl ::protobuf::Message for Action {
                     let tmp = is.read_uint64()?;
                     self.gas_limit = tmp;
                 },
+                6 => {
+                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.code)?;
+                },
+                7 => {
+                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.nonce)?;
+                },
                 _ => {
                     ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
                 },
@@ -373,6 +433,12 @@ impl ::protobuf::Message for Action {
         if self.gas_limit != 0 {
             my_size += ::protobuf::rt::value_size(5, self.gas_limit, ::protobuf::wire_format::WireTypeVarint);
         }
+        if !self.code.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(6, &self.code);
+        }
+        if !self.nonce.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(7, &self.nonce);
+        }
         my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
         self.cached_size.set(my_size);
         my_size
@@ -393,6 +459,12 @@ impl ::protobuf::Message for Action {
         }
         if self.gas_limit != 0 {
             os.write_uint64(5, self.gas_limit)?;
+        }
+        if !self.code.is_empty() {
+            os.write_bytes(6, &self.code)?;
+        }
+        if !self.nonce.is_empty() {
+            os.write_bytes(7, &self.nonce)?;
         }
         os.write_unknown_fields(self.get_unknown_fields())?;
         ::std::result::Result::Ok(())
@@ -457,6 +529,16 @@ impl ::protobuf::Message for Action {
                 |m: &Action| { &m.gas_limit },
                 |m: &mut Action| { &mut m.gas_limit },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
+                "code",
+                |m: &Action| { &m.code },
+                |m: &mut Action| { &mut m.code },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
+                "nonce",
+                |m: &Action| { &m.nonce },
+                |m: &mut Action| { &mut m.nonce },
+            ));
             ::protobuf::reflect::MessageDescriptor::new_pb_name::<Action>(
                 "Action",
                 fields,
@@ -478,6 +560,8 @@ impl ::protobuf::Clear for Action {
         self.method.clear();
         self.args.clear();
         self.gas_limit = 0;
+        self.code.clear();
+        self.nonce.clear();
         self.unknown_fields.clear();
     }
 }
@@ -501,8 +585,8 @@ pub struct ActionResult {
     pub success: bool,
     pub error: ::std::string::String,
     pub gas_used: u64,
+    pub remaining_gas: u64,
     pub output_data: ::std::vec::Vec<u8>,
-    pub remain_gas_cost: ::std::vec::Vec<u8>,
     pub sub_action_results: ::protobuf::RepeatedField<ActionResult>,
     // special fields
     pub unknown_fields: ::protobuf::UnknownFields,
@@ -609,7 +693,22 @@ impl ActionResult {
         self.gas_used = v;
     }
 
-    // bytes output_data = 5;
+    // uint64 remaining_gas = 5;
+
+
+    pub fn get_remaining_gas(&self) -> u64 {
+        self.remaining_gas
+    }
+    pub fn clear_remaining_gas(&mut self) {
+        self.remaining_gas = 0;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_remaining_gas(&mut self, v: u64) {
+        self.remaining_gas = v;
+    }
+
+    // bytes output_data = 6;
 
 
     pub fn get_output_data(&self) -> &[u8] {
@@ -633,32 +732,6 @@ impl ActionResult {
     // Take field
     pub fn take_output_data(&mut self) -> ::std::vec::Vec<u8> {
         ::std::mem::replace(&mut self.output_data, ::std::vec::Vec::new())
-    }
-
-    // bytes remain_gas_cost = 6;
-
-
-    pub fn get_remain_gas_cost(&self) -> &[u8] {
-        &self.remain_gas_cost
-    }
-    pub fn clear_remain_gas_cost(&mut self) {
-        self.remain_gas_cost.clear();
-    }
-
-    // Param is passed by value, moved
-    pub fn set_remain_gas_cost(&mut self, v: ::std::vec::Vec<u8>) {
-        self.remain_gas_cost = v;
-    }
-
-    // Mutable pointer to the field.
-    // If field is not initialized, it is initialized with default value first.
-    pub fn mut_remain_gas_cost(&mut self) -> &mut ::std::vec::Vec<u8> {
-        &mut self.remain_gas_cost
-    }
-
-    // Take field
-    pub fn take_remain_gas_cost(&mut self) -> ::std::vec::Vec<u8> {
-        ::std::mem::replace(&mut self.remain_gas_cost, ::std::vec::Vec::new())
     }
 
     // repeated .models.ActionResult sub_action_results = 7;
@@ -727,10 +800,14 @@ impl ::protobuf::Message for ActionResult {
                     self.gas_used = tmp;
                 },
                 5 => {
-                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.output_data)?;
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_uint64()?;
+                    self.remaining_gas = tmp;
                 },
                 6 => {
-                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.remain_gas_cost)?;
+                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.output_data)?;
                 },
                 7 => {
                     ::protobuf::rt::read_repeated_message_into(wire_type, is, &mut self.sub_action_results)?;
@@ -760,11 +837,11 @@ impl ::protobuf::Message for ActionResult {
         if self.gas_used != 0 {
             my_size += ::protobuf::rt::value_size(4, self.gas_used, ::protobuf::wire_format::WireTypeVarint);
         }
-        if !self.output_data.is_empty() {
-            my_size += ::protobuf::rt::bytes_size(5, &self.output_data);
+        if self.remaining_gas != 0 {
+            my_size += ::protobuf::rt::value_size(5, self.remaining_gas, ::protobuf::wire_format::WireTypeVarint);
         }
-        if !self.remain_gas_cost.is_empty() {
-            my_size += ::protobuf::rt::bytes_size(6, &self.remain_gas_cost);
+        if !self.output_data.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(6, &self.output_data);
         }
         for value in &self.sub_action_results {
             let len = value.compute_size();
@@ -790,11 +867,11 @@ impl ::protobuf::Message for ActionResult {
         if self.gas_used != 0 {
             os.write_uint64(4, self.gas_used)?;
         }
-        if !self.output_data.is_empty() {
-            os.write_bytes(5, &self.output_data)?;
+        if self.remaining_gas != 0 {
+            os.write_uint64(5, self.remaining_gas)?;
         }
-        if !self.remain_gas_cost.is_empty() {
-            os.write_bytes(6, &self.remain_gas_cost)?;
+        if !self.output_data.is_empty() {
+            os.write_bytes(6, &self.output_data)?;
         }
         for v in &self.sub_action_results {
             os.write_tag(7, ::protobuf::wire_format::WireTypeLengthDelimited)?;
@@ -859,15 +936,15 @@ impl ::protobuf::Message for ActionResult {
                 |m: &ActionResult| { &m.gas_used },
                 |m: &mut ActionResult| { &mut m.gas_used },
             ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeUint64>(
+                "remaining_gas",
+                |m: &ActionResult| { &m.remaining_gas },
+                |m: &mut ActionResult| { &mut m.remaining_gas },
+            ));
             fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
                 "output_data",
                 |m: &ActionResult| { &m.output_data },
                 |m: &mut ActionResult| { &mut m.output_data },
-            ));
-            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
-                "remain_gas_cost",
-                |m: &ActionResult| { &m.remain_gas_cost },
-                |m: &mut ActionResult| { &mut m.remain_gas_cost },
             ));
             fields.push(::protobuf::reflect::accessor::make_repeated_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<ActionResult>>(
                 "sub_action_results",
@@ -894,8 +971,8 @@ impl ::protobuf::Clear for ActionResult {
         self.success = false;
         self.error.clear();
         self.gas_used = 0;
+        self.remaining_gas = 0;
         self.output_data.clear();
-        self.remain_gas_cost.clear();
         self.sub_action_results.clear();
         self.unknown_fields.clear();
     }
@@ -913,63 +990,490 @@ impl ::protobuf::reflect::ProtobufValue for ActionResult {
     }
 }
 
+#[derive(PartialEq,Clone,Default)]
+pub struct PromiseResult {
+    // message fields
+    pub success: bool,
+    pub data: ::std::vec::Vec<u8>,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a PromiseResult {
+    fn default() -> &'a PromiseResult {
+        <PromiseResult as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl PromiseResult {
+    pub fn new() -> PromiseResult {
+        ::std::default::Default::default()
+    }
+
+    // bool success = 1;
+
+
+    pub fn get_success(&self) -> bool {
+        self.success
+    }
+    pub fn clear_success(&mut self) {
+        self.success = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_success(&mut self, v: bool) {
+        self.success = v;
+    }
+
+    // bytes data = 2;
+
+
+    pub fn get_data(&self) -> &[u8] {
+        &self.data
+    }
+    pub fn clear_data(&mut self) {
+        self.data.clear();
+    }
+
+    // Param is passed by value, moved
+    pub fn set_data(&mut self, v: ::std::vec::Vec<u8>) {
+        self.data = v;
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_data(&mut self) -> &mut ::std::vec::Vec<u8> {
+        &mut self.data
+    }
+
+    // Take field
+    pub fn take_data(&mut self) -> ::std::vec::Vec<u8> {
+        ::std::mem::replace(&mut self.data, ::std::vec::Vec::new())
+    }
+}
+
+impl ::protobuf::Message for PromiseResult {
+    fn is_initialized(&self) -> bool {
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.success = tmp;
+                },
+                2 => {
+                    ::protobuf::rt::read_singular_proto3_bytes_into(wire_type, is, &mut self.data)?;
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        if self.success != false {
+            my_size += 2;
+        }
+        if !self.data.is_empty() {
+            my_size += ::protobuf::rt::bytes_size(2, &self.data);
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if self.success != false {
+            os.write_bool(1, self.success)?;
+        }
+        if !self.data.is_empty() {
+            os.write_bytes(2, &self.data)?;
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> PromiseResult {
+        PromiseResult::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
+        descriptor.get(|| {
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "success",
+                |m: &PromiseResult| { &m.success },
+                |m: &mut PromiseResult| { &mut m.success },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBytes>(
+                "data",
+                |m: &PromiseResult| { &m.data },
+                |m: &mut PromiseResult| { &mut m.data },
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<PromiseResult>(
+                "PromiseResult",
+                fields,
+                file_descriptor_proto()
+            )
+        })
+    }
+
+    fn default_instance() -> &'static PromiseResult {
+        static instance: ::protobuf::rt::LazyV2<PromiseResult> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(PromiseResult::new)
+    }
+}
+
+impl ::protobuf::Clear for PromiseResult {
+    fn clear(&mut self) {
+        self.success = false;
+        self.data.clear();
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for PromiseResult {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for PromiseResult {
+    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
+        ::protobuf::reflect::ReflectValueRef::Message(self)
+    }
+}
+
+#[derive(PartialEq,Clone,Default)]
+pub struct InvocationContext {
+    // message fields
+    pub is_callback: bool,
+    pub promise_result: ::protobuf::SingularPtrField<PromiseResult>,
+    // special fields
+    pub unknown_fields: ::protobuf::UnknownFields,
+    pub cached_size: ::protobuf::CachedSize,
+}
+
+impl<'a> ::std::default::Default for &'a InvocationContext {
+    fn default() -> &'a InvocationContext {
+        <InvocationContext as ::protobuf::Message>::default_instance()
+    }
+}
+
+impl InvocationContext {
+    pub fn new() -> InvocationContext {
+        ::std::default::Default::default()
+    }
+
+    // bool is_callback = 1;
+
+
+    pub fn get_is_callback(&self) -> bool {
+        self.is_callback
+    }
+    pub fn clear_is_callback(&mut self) {
+        self.is_callback = false;
+    }
+
+    // Param is passed by value, moved
+    pub fn set_is_callback(&mut self, v: bool) {
+        self.is_callback = v;
+    }
+
+    // .models.PromiseResult promise_result = 2;
+
+
+    pub fn get_promise_result(&self) -> &PromiseResult {
+        self.promise_result.as_ref().unwrap_or_else(|| <PromiseResult as ::protobuf::Message>::default_instance())
+    }
+    pub fn clear_promise_result(&mut self) {
+        self.promise_result.clear();
+    }
+
+    pub fn has_promise_result(&self) -> bool {
+        self.promise_result.is_some()
+    }
+
+    // Param is passed by value, moved
+    pub fn set_promise_result(&mut self, v: PromiseResult) {
+        self.promise_result = ::protobuf::SingularPtrField::some(v);
+    }
+
+    // Mutable pointer to the field.
+    // If field is not initialized, it is initialized with default value first.
+    pub fn mut_promise_result(&mut self) -> &mut PromiseResult {
+        if self.promise_result.is_none() {
+            self.promise_result.set_default();
+        }
+        self.promise_result.as_mut().unwrap()
+    }
+
+    // Take field
+    pub fn take_promise_result(&mut self) -> PromiseResult {
+        self.promise_result.take().unwrap_or_else(|| PromiseResult::new())
+    }
+}
+
+impl ::protobuf::Message for InvocationContext {
+    fn is_initialized(&self) -> bool {
+        for v in &self.promise_result {
+            if !v.is_initialized() {
+                return false;
+            }
+        };
+        true
+    }
+
+    fn merge_from(&mut self, is: &mut ::protobuf::CodedInputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        while !is.eof()? {
+            let (field_number, wire_type) = is.read_tag_unpack()?;
+            match field_number {
+                1 => {
+                    if wire_type != ::protobuf::wire_format::WireTypeVarint {
+                        return ::std::result::Result::Err(::protobuf::rt::unexpected_wire_type(wire_type));
+                    }
+                    let tmp = is.read_bool()?;
+                    self.is_callback = tmp;
+                },
+                2 => {
+                    ::protobuf::rt::read_singular_message_into(wire_type, is, &mut self.promise_result)?;
+                },
+                _ => {
+                    ::protobuf::rt::read_unknown_or_skip_group(field_number, wire_type, is, self.mut_unknown_fields())?;
+                },
+            };
+        }
+        ::std::result::Result::Ok(())
+    }
+
+    // Compute sizes of nested messages
+    #[allow(unused_variables)]
+    fn compute_size(&self) -> u32 {
+        let mut my_size = 0;
+        if self.is_callback != false {
+            my_size += 2;
+        }
+        if let Some(ref v) = self.promise_result.as_ref() {
+            let len = v.compute_size();
+            my_size += 1 + ::protobuf::rt::compute_raw_varint32_size(len) + len;
+        }
+        my_size += ::protobuf::rt::unknown_fields_size(self.get_unknown_fields());
+        self.cached_size.set(my_size);
+        my_size
+    }
+
+    fn write_to_with_cached_sizes(&self, os: &mut ::protobuf::CodedOutputStream<'_>) -> ::protobuf::ProtobufResult<()> {
+        if self.is_callback != false {
+            os.write_bool(1, self.is_callback)?;
+        }
+        if let Some(ref v) = self.promise_result.as_ref() {
+            os.write_tag(2, ::protobuf::wire_format::WireTypeLengthDelimited)?;
+            os.write_raw_varint32(v.get_cached_size())?;
+            v.write_to_with_cached_sizes(os)?;
+        }
+        os.write_unknown_fields(self.get_unknown_fields())?;
+        ::std::result::Result::Ok(())
+    }
+
+    fn get_cached_size(&self) -> u32 {
+        self.cached_size.get()
+    }
+
+    fn get_unknown_fields(&self) -> &::protobuf::UnknownFields {
+        &self.unknown_fields
+    }
+
+    fn mut_unknown_fields(&mut self) -> &mut ::protobuf::UnknownFields {
+        &mut self.unknown_fields
+    }
+
+    fn as_any(&self) -> &dyn (::std::any::Any) {
+        self as &dyn (::std::any::Any)
+    }
+    fn as_any_mut(&mut self) -> &mut dyn (::std::any::Any) {
+        self as &mut dyn (::std::any::Any)
+    }
+    fn into_any(self: ::std::boxed::Box<Self>) -> ::std::boxed::Box<dyn (::std::any::Any)> {
+        self
+    }
+
+    fn descriptor(&self) -> &'static ::protobuf::reflect::MessageDescriptor {
+        Self::descriptor_static()
+    }
+
+    fn new() -> InvocationContext {
+        InvocationContext::new()
+    }
+
+    fn descriptor_static() -> &'static ::protobuf::reflect::MessageDescriptor {
+        static descriptor: ::protobuf::rt::LazyV2<::protobuf::reflect::MessageDescriptor> = ::protobuf::rt::LazyV2::INIT;
+        descriptor.get(|| {
+            let mut fields = ::std::vec::Vec::new();
+            fields.push(::protobuf::reflect::accessor::make_simple_field_accessor::<_, ::protobuf::types::ProtobufTypeBool>(
+                "is_callback",
+                |m: &InvocationContext| { &m.is_callback },
+                |m: &mut InvocationContext| { &mut m.is_callback },
+            ));
+            fields.push(::protobuf::reflect::accessor::make_singular_ptr_field_accessor::<_, ::protobuf::types::ProtobufTypeMessage<PromiseResult>>(
+                "promise_result",
+                |m: &InvocationContext| { &m.promise_result },
+                |m: &mut InvocationContext| { &mut m.promise_result },
+            ));
+            ::protobuf::reflect::MessageDescriptor::new_pb_name::<InvocationContext>(
+                "InvocationContext",
+                fields,
+                file_descriptor_proto()
+            )
+        })
+    }
+
+    fn default_instance() -> &'static InvocationContext {
+        static instance: ::protobuf::rt::LazyV2<InvocationContext> = ::protobuf::rt::LazyV2::INIT;
+        instance.get(InvocationContext::new)
+    }
+}
+
+impl ::protobuf::Clear for InvocationContext {
+    fn clear(&mut self) {
+        self.is_callback = false;
+        self.promise_result.clear();
+        self.unknown_fields.clear();
+    }
+}
+
+impl ::std::fmt::Debug for InvocationContext {
+    fn fmt(&self, f: &mut ::std::fmt::Formatter<'_>) -> ::std::fmt::Result {
+        ::protobuf::text_format::fmt(self, f)
+    }
+}
+
+impl ::protobuf::reflect::ProtobufValue for InvocationContext {
+    fn as_ref(&self) -> ::protobuf::reflect::ReflectValueRef {
+        ::protobuf::reflect::ReflectValueRef::Message(self)
+    }
+}
+
 static file_descriptor_proto_data: &'static [u8] = b"\
     \n\x0cmodels.proto\x12\x06models\"+\n\x15ProtoCallContractArgs\x12\x12\n\
-    \x04args\x18\x01\x20\x03(\x0cR\x04args\"\x8a\x01\n\x06Action\x12\x1f\n\
+    \x04args\x18\x01\x20\x03(\x0cR\x04args\"\xb4\x01\n\x06Action\x12\x1f\n\
     \x0baction_type\x18\x01\x20\x01(\rR\nactionType\x12\x16\n\x06amount\x18\
     \x02\x20\x01(\x0cR\x06amount\x12\x16\n\x06method\x18\x03\x20\x01(\tR\x06\
     method\x12\x12\n\x04args\x18\x04\x20\x01(\x0cR\x04args\x12\x1b\n\tgas_li\
-    mit\x18\x05\x20\x01(\x04R\x08gasLimit\"\x99\x02\n\x0cActionResult\x121\n\
-    \x0cinput_action\x18\x01\x20\x01(\x0b2\x0e.models.ActionR\x0binputAction\
-    \x12\x18\n\x07success\x18\x02\x20\x01(\x08R\x07success\x12\x14\n\x05erro\
-    r\x18\x03\x20\x01(\tR\x05error\x12\x19\n\x08gas_used\x18\x04\x20\x01(\
-    \x04R\x07gasUsed\x12\x1f\n\x0boutput_data\x18\x05\x20\x01(\x0cR\noutputD\
-    ata\x12&\n\x0fremain_gas_cost\x18\x06\x20\x01(\x0cR\rremainGasCost\x12B\
-    \n\x12sub_action_results\x18\x07\x20\x03(\x0b2\x14.models.ActionResultR\
-    \x10subActionResultsJ\xf1\x06\n\x06\x12\x04\x02\0\x19\x01\n.\n\x01\x0c\
-    \x12\x03\x02\0\x122$\x20protoc\x20--rust_out\x20.\x20.\\models.proto\n\n\
-    \x08\n\x01\x02\x12\x03\x03\0\x0f\n\n\n\x02\x04\0\x12\x04\x05\0\x07\x01\n\
-    \n\n\x03\x04\0\x01\x12\x03\x05\x08\x1d\n\x0b\n\x04\x04\0\x02\0\x12\x03\
-    \x06\x02\x1a\n\x0c\n\x05\x04\0\x02\0\x04\x12\x03\x06\x02\n\n\x0c\n\x05\
-    \x04\0\x02\0\x05\x12\x03\x06\x0b\x10\n\x0c\n\x05\x04\0\x02\0\x01\x12\x03\
-    \x06\x11\x15\n\x0c\n\x05\x04\0\x02\0\x03\x12\x03\x06\x18\x19\n\n\n\x02\
-    \x04\x01\x12\x04\t\0\x0f\x01\n\n\n\x03\x04\x01\x01\x12\x03\t\x08\x0e\n\
-    \x0b\n\x04\x04\x01\x02\0\x12\x03\n\x02\x19\n\x0c\n\x05\x04\x01\x02\0\x05\
-    \x12\x03\n\x02\x08\n\x0c\n\x05\x04\x01\x02\0\x01\x12\x03\n\t\x14\n\x0c\n\
-    \x05\x04\x01\x02\0\x03\x12\x03\n\x17\x18\n\x0b\n\x04\x04\x01\x02\x01\x12\
-    \x03\x0b\x02\x13\n\x0c\n\x05\x04\x01\x02\x01\x05\x12\x03\x0b\x02\x07\n\
-    \x0c\n\x05\x04\x01\x02\x01\x01\x12\x03\x0b\x08\x0e\n\x0c\n\x05\x04\x01\
-    \x02\x01\x03\x12\x03\x0b\x11\x12\n\x0b\n\x04\x04\x01\x02\x02\x12\x03\x0c\
-    \x02\x14\n\x0c\n\x05\x04\x01\x02\x02\x05\x12\x03\x0c\x02\x08\n\x0c\n\x05\
-    \x04\x01\x02\x02\x01\x12\x03\x0c\t\x0f\n\x0c\n\x05\x04\x01\x02\x02\x03\
-    \x12\x03\x0c\x12\x13\n\x0b\n\x04\x04\x01\x02\x03\x12\x03\r\x02\x11\n\x0c\
-    \n\x05\x04\x01\x02\x03\x05\x12\x03\r\x02\x07\n\x0c\n\x05\x04\x01\x02\x03\
-    \x01\x12\x03\r\x08\x0c\n\x0c\n\x05\x04\x01\x02\x03\x03\x12\x03\r\x0f\x10\
-    \n\x0b\n\x04\x04\x01\x02\x04\x12\x03\x0e\x02\x17\n\x0c\n\x05\x04\x01\x02\
-    \x04\x05\x12\x03\x0e\x02\x08\n\x0c\n\x05\x04\x01\x02\x04\x01\x12\x03\x0e\
-    \t\x12\n\x0c\n\x05\x04\x01\x02\x04\x03\x12\x03\x0e\x15\x16\n\n\n\x02\x04\
-    \x02\x12\x04\x11\0\x19\x01\n\n\n\x03\x04\x02\x01\x12\x03\x11\x08\x14\n\
-    \x0b\n\x04\x04\x02\x02\0\x12\x03\x12\x02\x1a\n\x0c\n\x05\x04\x02\x02\0\
-    \x06\x12\x03\x12\x02\x08\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03\x12\t\x15\
-    \n\x0c\n\x05\x04\x02\x02\0\x03\x12\x03\x12\x18\x19\n\x0b\n\x04\x04\x02\
-    \x02\x01\x12\x03\x13\x02\x13\n\x0c\n\x05\x04\x02\x02\x01\x05\x12\x03\x13\
-    \x02\x06\n\x0c\n\x05\x04\x02\x02\x01\x01\x12\x03\x13\x07\x0e\n\x0c\n\x05\
-    \x04\x02\x02\x01\x03\x12\x03\x13\x11\x12\n\x0b\n\x04\x04\x02\x02\x02\x12\
-    \x03\x14\x02\x13\n\x0c\n\x05\x04\x02\x02\x02\x05\x12\x03\x14\x02\x08\n\
-    \x0c\n\x05\x04\x02\x02\x02\x01\x12\x03\x14\t\x0e\n\x0c\n\x05\x04\x02\x02\
-    \x02\x03\x12\x03\x14\x11\x12\n\x0b\n\x04\x04\x02\x02\x03\x12\x03\x15\x02\
-    \x16\n\x0c\n\x05\x04\x02\x02\x03\x05\x12\x03\x15\x02\x08\n\x0c\n\x05\x04\
-    \x02\x02\x03\x01\x12\x03\x15\t\x11\n\x0c\n\x05\x04\x02\x02\x03\x03\x12\
-    \x03\x15\x14\x15\n\x0b\n\x04\x04\x02\x02\x04\x12\x03\x16\x02\x18\n\x0c\n\
-    \x05\x04\x02\x02\x04\x05\x12\x03\x16\x02\x07\n\x0c\n\x05\x04\x02\x02\x04\
-    \x01\x12\x03\x16\x08\x13\n\x0c\n\x05\x04\x02\x02\x04\x03\x12\x03\x16\x16\
-    \x17\n\x0b\n\x04\x04\x02\x02\x05\x12\x03\x17\x02\x1c\n\x0c\n\x05\x04\x02\
-    \x02\x05\x05\x12\x03\x17\x02\x07\n\x0c\n\x05\x04\x02\x02\x05\x01\x12\x03\
-    \x17\x08\x17\n\x0c\n\x05\x04\x02\x02\x05\x03\x12\x03\x17\x1a\x1b\n\x0b\n\
-    \x04\x04\x02\x02\x06\x12\x03\x18\x02/\n\x0c\n\x05\x04\x02\x02\x06\x04\
-    \x12\x03\x18\x02\n\n\x0c\n\x05\x04\x02\x02\x06\x06\x12\x03\x18\x0b\x17\n\
-    \x0c\n\x05\x04\x02\x02\x06\x01\x12\x03\x18\x18*\n\x0c\n\x05\x04\x02\x02\
-    \x06\x03\x12\x03\x18-.b\x06proto3\
+    mit\x18\x05\x20\x01(\x04R\x08gasLimit\x12\x12\n\x04code\x18\x06\x20\x01(\
+    \x0cR\x04code\x12\x14\n\x05nonce\x18\x07\x20\x01(\x0cR\x05nonce\"\x96\
+    \x02\n\x0cActionResult\x121\n\x0cinput_action\x18\x01\x20\x01(\x0b2\x0e.\
+    models.ActionR\x0binputAction\x12\x18\n\x07success\x18\x02\x20\x01(\x08R\
+    \x07success\x12\x14\n\x05error\x18\x03\x20\x01(\tR\x05error\x12\x19\n\
+    \x08gas_used\x18\x04\x20\x01(\x04R\x07gasUsed\x12#\n\rremaining_gas\x18\
+    \x05\x20\x01(\x04R\x0cremainingGas\x12\x1f\n\x0boutput_data\x18\x06\x20\
+    \x01(\x0cR\noutputData\x12B\n\x12sub_action_results\x18\x07\x20\x03(\x0b\
+    2\x14.models.ActionResultR\x10subActionResults\"=\n\rPromiseResult\x12\
+    \x18\n\x07success\x18\x01\x20\x01(\x08R\x07success\x12\x12\n\x04data\x18\
+    \x02\x20\x01(\x0cR\x04data\"r\n\x11InvocationContext\x12\x1f\n\x0bis_cal\
+    lback\x18\x01\x20\x01(\x08R\nisCallback\x12<\n\x0epromise_result\x18\x02\
+    \x20\x01(\x0b2\x15.models.PromiseResultR\rpromiseResultJ\xeb\t\n\x06\x12\
+    \x04\x02\0&\x01\n.\n\x01\x0c\x12\x03\x02\0\x122$\x20protoc\x20--rust_out\
+    \x20.\x20.\\models.proto\n\n\x08\n\x01\x02\x12\x03\x03\0\x0f\n\n\n\x02\
+    \x04\0\x12\x04\x05\0\x07\x01\n\n\n\x03\x04\0\x01\x12\x03\x05\x08\x1d\n\
+    \x0b\n\x04\x04\0\x02\0\x12\x03\x06\x02\x1a\n\x0c\n\x05\x04\0\x02\0\x04\
+    \x12\x03\x06\x02\n\n\x0c\n\x05\x04\0\x02\0\x05\x12\x03\x06\x0b\x10\n\x0c\
+    \n\x05\x04\0\x02\0\x01\x12\x03\x06\x11\x15\n\x0c\n\x05\x04\0\x02\0\x03\
+    \x12\x03\x06\x18\x19\n\n\n\x02\x04\x01\x12\x04\t\0\x11\x01\n\n\n\x03\x04\
+    \x01\x01\x12\x03\t\x08\x0e\n\x0b\n\x04\x04\x01\x02\0\x12\x03\n\x02\x19\n\
+    \x0c\n\x05\x04\x01\x02\0\x05\x12\x03\n\x02\x08\n\x0c\n\x05\x04\x01\x02\0\
+    \x01\x12\x03\n\t\x14\n\x0c\n\x05\x04\x01\x02\0\x03\x12\x03\n\x17\x18\n\
+    \x0b\n\x04\x04\x01\x02\x01\x12\x03\x0b\x02\x13\n\x0c\n\x05\x04\x01\x02\
+    \x01\x05\x12\x03\x0b\x02\x07\n\x0c\n\x05\x04\x01\x02\x01\x01\x12\x03\x0b\
+    \x08\x0e\n\x0c\n\x05\x04\x01\x02\x01\x03\x12\x03\x0b\x11\x12\n\x0b\n\x04\
+    \x04\x01\x02\x02\x12\x03\x0c\x02\x14\n\x0c\n\x05\x04\x01\x02\x02\x05\x12\
+    \x03\x0c\x02\x08\n\x0c\n\x05\x04\x01\x02\x02\x01\x12\x03\x0c\t\x0f\n\x0c\
+    \n\x05\x04\x01\x02\x02\x03\x12\x03\x0c\x12\x13\n\x0b\n\x04\x04\x01\x02\
+    \x03\x12\x03\r\x02\x11\n\x0c\n\x05\x04\x01\x02\x03\x05\x12\x03\r\x02\x07\
+    \n\x0c\n\x05\x04\x01\x02\x03\x01\x12\x03\r\x08\x0c\n\x0c\n\x05\x04\x01\
+    \x02\x03\x03\x12\x03\r\x0f\x10\n\x0b\n\x04\x04\x01\x02\x04\x12\x03\x0e\
+    \x02\x17\n\x0c\n\x05\x04\x01\x02\x04\x05\x12\x03\x0e\x02\x08\n\x0c\n\x05\
+    \x04\x01\x02\x04\x01\x12\x03\x0e\t\x12\n\x0c\n\x05\x04\x01\x02\x04\x03\
+    \x12\x03\x0e\x15\x16\n\x0b\n\x04\x04\x01\x02\x05\x12\x03\x0f\x02\x11\n\
+    \x0c\n\x05\x04\x01\x02\x05\x05\x12\x03\x0f\x02\x07\n\x0c\n\x05\x04\x01\
+    \x02\x05\x01\x12\x03\x0f\x08\x0c\n\x0c\n\x05\x04\x01\x02\x05\x03\x12\x03\
+    \x0f\x0f\x10\n\x0b\n\x04\x04\x01\x02\x06\x12\x03\x10\x02\x12\n\x0c\n\x05\
+    \x04\x01\x02\x06\x05\x12\x03\x10\x02\x07\n\x0c\n\x05\x04\x01\x02\x06\x01\
+    \x12\x03\x10\x08\r\n\x0c\n\x05\x04\x01\x02\x06\x03\x12\x03\x10\x10\x11\n\
+    \n\n\x02\x04\x02\x12\x04\x13\0\x1b\x01\n\n\n\x03\x04\x02\x01\x12\x03\x13\
+    \x08\x14\n\x0b\n\x04\x04\x02\x02\0\x12\x03\x14\x02\x1a\n\x0c\n\x05\x04\
+    \x02\x02\0\x06\x12\x03\x14\x02\x08\n\x0c\n\x05\x04\x02\x02\0\x01\x12\x03\
+    \x14\t\x15\n\x0c\n\x05\x04\x02\x02\0\x03\x12\x03\x14\x18\x19\n\x0b\n\x04\
+    \x04\x02\x02\x01\x12\x03\x15\x02\x13\n\x0c\n\x05\x04\x02\x02\x01\x05\x12\
+    \x03\x15\x02\x06\n\x0c\n\x05\x04\x02\x02\x01\x01\x12\x03\x15\x07\x0e\n\
+    \x0c\n\x05\x04\x02\x02\x01\x03\x12\x03\x15\x11\x12\n\x0b\n\x04\x04\x02\
+    \x02\x02\x12\x03\x16\x02\x13\n\x0c\n\x05\x04\x02\x02\x02\x05\x12\x03\x16\
+    \x02\x08\n\x0c\n\x05\x04\x02\x02\x02\x01\x12\x03\x16\t\x0e\n\x0c\n\x05\
+    \x04\x02\x02\x02\x03\x12\x03\x16\x11\x12\n\x0b\n\x04\x04\x02\x02\x03\x12\
+    \x03\x17\x02\x16\n\x0c\n\x05\x04\x02\x02\x03\x05\x12\x03\x17\x02\x08\n\
+    \x0c\n\x05\x04\x02\x02\x03\x01\x12\x03\x17\t\x11\n\x0c\n\x05\x04\x02\x02\
+    \x03\x03\x12\x03\x17\x14\x15\n\x0b\n\x04\x04\x02\x02\x04\x12\x03\x18\x02\
+    \x1b\n\x0c\n\x05\x04\x02\x02\x04\x05\x12\x03\x18\x02\x08\n\x0c\n\x05\x04\
+    \x02\x02\x04\x01\x12\x03\x18\t\x16\n\x0c\n\x05\x04\x02\x02\x04\x03\x12\
+    \x03\x18\x19\x1a\n\x0b\n\x04\x04\x02\x02\x05\x12\x03\x19\x02\x18\n\x0c\n\
+    \x05\x04\x02\x02\x05\x05\x12\x03\x19\x02\x07\n\x0c\n\x05\x04\x02\x02\x05\
+    \x01\x12\x03\x19\x08\x13\n\x0c\n\x05\x04\x02\x02\x05\x03\x12\x03\x19\x16\
+    \x17\n\x0b\n\x04\x04\x02\x02\x06\x12\x03\x1a\x02/\n\x0c\n\x05\x04\x02\
+    \x02\x06\x04\x12\x03\x1a\x02\n\n\x0c\n\x05\x04\x02\x02\x06\x06\x12\x03\
+    \x1a\x0b\x17\n\x0c\n\x05\x04\x02\x02\x06\x01\x12\x03\x1a\x18*\n\x0c\n\
+    \x05\x04\x02\x02\x06\x03\x12\x03\x1a-.\n\n\n\x02\x04\x03\x12\x04\x1e\0!\
+    \x01\n\n\n\x03\x04\x03\x01\x12\x03\x1e\x08\x15\n\x0b\n\x04\x04\x03\x02\0\
+    \x12\x03\x1f\x02\x13\n\x0c\n\x05\x04\x03\x02\0\x05\x12\x03\x1f\x02\x06\n\
+    \x0c\n\x05\x04\x03\x02\0\x01\x12\x03\x1f\x07\x0e\n\x0c\n\x05\x04\x03\x02\
+    \0\x03\x12\x03\x1f\x11\x12\n\x0b\n\x04\x04\x03\x02\x01\x12\x03\x20\x02\
+    \x11\n\x0c\n\x05\x04\x03\x02\x01\x05\x12\x03\x20\x02\x07\n\x0c\n\x05\x04\
+    \x03\x02\x01\x01\x12\x03\x20\x08\x0c\n\x0c\n\x05\x04\x03\x02\x01\x03\x12\
+    \x03\x20\x0f\x10\n\n\n\x02\x04\x04\x12\x04#\0&\x01\n\n\n\x03\x04\x04\x01\
+    \x12\x03#\x08\x19\n\x0b\n\x04\x04\x04\x02\0\x12\x03$\x02\x17\n\x0c\n\x05\
+    \x04\x04\x02\0\x05\x12\x03$\x02\x06\n\x0c\n\x05\x04\x04\x02\0\x01\x12\
+    \x03$\x07\x12\n\x0c\n\x05\x04\x04\x02\0\x03\x12\x03$\x15\x16\n\x0b\n\x04\
+    \x04\x04\x02\x01\x12\x03%\x02#\n\x0c\n\x05\x04\x04\x02\x01\x06\x12\x03%\
+    \x02\x0f\n\x0c\n\x05\x04\x04\x02\x01\x01\x12\x03%\x10\x1e\n\x0c\n\x05\
+    \x04\x04\x02\x01\x03\x12\x03%!\"b\x06proto3\
 ";
 
 static file_descriptor_proto_lazy: ::protobuf::rt::LazyV2<::protobuf::descriptor::FileDescriptorProto> = ::protobuf::rt::LazyV2::INIT;

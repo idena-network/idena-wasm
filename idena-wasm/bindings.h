@@ -9,9 +9,13 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define BASE_PROMISE_COST 1000
+
 #define ACTION_FUNCTION_CALL 1
 
 #define ACTION_TRANSFER 2
+
+#define ACTION_DEPLOY_CONTRACT 3
 
 /**
  * This enum gives names to the status codes returned from Go callbacks to Rust.
@@ -93,12 +97,15 @@ typedef struct GoApi_vtable {
   int32_t (*delegatee)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*identity)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*caller)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
-  int32_t (*origin_caller)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*original_caller)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*commit)(const struct api_t*);
   int32_t (*deduct_balance)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*add_balance)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*);
   int32_t (*contract)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*contract_code)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*call)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t, uint64_t*, struct UnmanagedVector*);
+  int32_t (*deploy)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t, uint64_t*, struct UnmanagedVector*);
+  int32_t (*contract_addr)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {
@@ -124,6 +131,7 @@ uint8_t execute(struct GoApi api,
                 struct ByteSliceView code,
                 struct ByteSliceView method_name,
                 struct ByteSliceView args,
+                struct ByteSliceView invocation_context,
                 uint64_t gas_limit,
                 uint64_t *gas_used,
                 struct UnmanagedVector *action_result,

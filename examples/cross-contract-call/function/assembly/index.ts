@@ -1,10 +1,11 @@
-import {Address} from "./address";
-import {Bytes} from "./bytes"
-import {debug} from "./debug";
-import {env} from "./env";
-import {Region} from "./region";
-import {util} from "./utils";
-import {KeyValue} from "./keyValue";
+import {Address} from "asi/assembly/address";
+import {KeyValue} from "asi/assembly/keyValue";
+import {Region} from "asi/assembly/region";
+import {util} from "asi/assembly/utils";
+import {env} from "asi/assembly/env";
+import {Bytes} from "asi/assembly/bytes";
+import {debug} from "asi/assembly/debug";
+
 
 var contractAddr = new KeyValue<Address>("contract")
 

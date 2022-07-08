@@ -13,6 +13,8 @@ message Action {
   string method = 3;
   bytes args = 4;
   uint64 gas_limit = 5;
+  bytes code = 6;
+  bytes nonce = 7;
 }
 
 message ActionResult {
@@ -20,7 +22,18 @@ message ActionResult {
   bool success = 2;
   string error = 3;
   uint64 gas_used = 4;
-  bytes output_data = 5;
-  bytes remain_gas_cost = 6;
+  uint64 remaining_gas = 5;
+  bytes output_data = 6;
   repeated ActionResult sub_action_results = 7;
+}
+
+
+message PromiseResult {
+  bool success = 1;
+  bytes data = 2;
+}
+
+message InvocationContext {
+  bool is_callback = 1;
+  PromiseResult promise_result = 2;
 }
