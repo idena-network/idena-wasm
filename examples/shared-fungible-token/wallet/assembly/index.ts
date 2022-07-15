@@ -50,18 +50,6 @@ export function allocate(size: usize): usize {
     return result;
 }
 
-function packPlainArgument(data: Bytes): Bytes {
-    var result = new Bytes(data.length + 1);
-    result[0] = 0 // plain format
-    memory.copy(result.dataStart + 1, data.dataStart, data.length)
-    return result
-}
-
-function packProtoArgument(arg1: Bytes, arg2: Bytes): Bytes {
-    var result = new Bytes(arg1.length + arg2.length + 1);
-    return result
-}
-
 export function transferTo(recipient: i32, amount: i32): void {
 
     let tokens = ptrToBytes(amount).toU64()
@@ -77,11 +65,11 @@ export function transferTo(recipient: i32, amount: i32): void {
 
     let recipientAddr = ptrToBytes(recipient)
 
-    let walletArgs = bytesToPtr(packProtoArgument(recipientAddr, rootAddr))
+    let walletArgs = bytesToPtr(util.packProtobufArgument([recipientAddr, rootAddr]));
 
     let idx = env.createDeployContractPromise(env.code(), walletArgs, 0, 0, 100000)
 
-    var callbackArgs = bytesToPtr(packProtoArgument(recipientAddr, ptrToBytes(amount)))
+    var callbackArgs = bytesToPtr(util.packProtobufArgument([recipientAddr, ptrToBytes(amount)]));
 
     env.then(idx, strToPtr("_deploy_wallet_callback"), callbackArgs, 0, 1000000)
 }
@@ -108,7 +96,7 @@ export function receive(amount: i32, sender_owner: i32): void {
     let caller = ptrToBytes(env.caller())
     let rootAddr = changetype<Address>(root.get(Address.fromBytes(new Bytes(0)), a => Address.fromBytes(a)))
 
-    let walletArgs = bytesToPtr(packProtoArgument(ptrToBytes(sender_owner), rootAddr))
+    let walletArgs = bytesToPtr(util.packProtobufArgument([ptrToBytes(sender_owner), rootAddr]))
     var requiredCaller = ptrToBytes(env.contractAddressByHash(env.codeHash(), walletArgs, 0))
 
     assert(caller.toHex() == requiredCaller.toHex(), "sender is invalid")
@@ -122,17 +110,16 @@ export function _deploy_wallet_callback(recipient: i32, amount: i32): void {
     let recipientAddr = ptrToBytes(recipient)
     let rootAddr = changetype<Address>(root.get(Address.fromBytes(new Bytes(0)), a => Address.fromBytes(a)))
 
-    let walletArgs = bytesToPtr(packProtoArgument(recipientAddr, rootAddr))
-    var recipientWallet = ptrToBytes(env.contractAddressByHash(env.codeHash(), walletArgs, 0))
+    let walletArgs = bytesToPtr(util.packProtobufArgument([recipientAddr, rootAddr]))
 
-    let receiveArgs = bytesToPtr(packProtoArgument(ptrToBytes(amount), ownerAddr))
+    let receiveArgs = bytesToPtr(util.packProtobufArgument([ptrToBytes(amount), ownerAddr]))
 
     let tokens = ptrToBytes(amount).toU64()
     assert(balance() >= tokens, "not enough tokens on account");
     subBalance(tokens)
 
     let idx = env.createCallFunctionPromise(env.contractAddressByHash(env.codeHash(), walletArgs, 0), strToPtr("receive"), receiveArgs, 0, 100000)
-    env.then(idx, strToPtr("_send_tokens_callback"), bytesToPtr(packPlainArgument(ptrToBytes(amount))), 0, 100000)
+    env.then(idx, strToPtr("_send_tokens_callback"), bytesToPtr(util.packPlainArgument(ptrToBytes(amount))), 0, 100000)
 }
 
 export function _send_tokens_callback(amount: i32): void {
