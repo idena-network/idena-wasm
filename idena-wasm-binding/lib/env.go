@@ -26,10 +26,10 @@ type HostEnv interface {
 	NetworkSize(meter *GasMeter) uint64
 	IdentityState(meter *GasMeter, address Address) byte
 	Identity(meter *GasMeter, address Address) []byte
-	CreateSubEnv(contract Address, payAmount *big.Int) (HostEnv, error)
+	CreateSubEnv(contract Address, payAmount *big.Int, isDeploy bool) (HostEnv, error)
 	GetCode(addr Address) []byte
 	Commit()
-	Revert()
+	Clear()
 	Caller(meter *GasMeter) Address
 	OriginalCaller(meter *GasMeter) Address
 	SubBalance(meter *GasMeter, amount *big.Int) error
@@ -37,6 +37,7 @@ type HostEnv interface {
 	ContractAddress(meter *GasMeter) Address
 	ContractCode(meter *GasMeter, addr Address) []byte
 	ContractAddr(meter *GasMeter, code []byte, args []byte, nonce []byte) Address
+	Deploy(code []byte)
 }
 
 type GasMeter struct {

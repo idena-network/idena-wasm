@@ -2,26 +2,26 @@ export namespace env {
     //@ts-ignore
     @external("env", "debug")
     // Prints value to console, not available in production
-    export declare function print(key: i32): void
+    export declare function print(key: usize): void
 
     @external("env", "panic")
     // Interrupts execution with error message
-    export declare function panic(msg: i32): void
+    export declare function panic(msg: usize): void
 
     //@ts-ignore
     @external("env", "set_storage")
     // Sets key-value pair to contract store
-    export declare function setStorage(key: i32, value: i32): void
+    export declare function setStorage(key: usize, value: usize): void
 
     //@ts-ignore
     @external("env", "get_storage")
     // Reads value by key from contract store
-    export declare function getStorage(key: i32): i32
+    export declare function getStorage(key: usize): i32
 
     //@ts-ignore
     @external("env", "remove_storage")
     // Removes key-value pair from contract store
-    export declare function removeStorage(key: i32): void
+    export declare function removeStorage(key: usize): void
 
     //@ts-ignore
     @external("env", "block_timestamp")
@@ -54,22 +54,22 @@ export namespace env {
      * Reads full protobuf model of identity
      * @returns pointer to region with binary data, 0 if identity doesn't exist
      */
-    export declare function identity(addr: usize): i32
+    export declare function identity(addr: usize): usize
 
     //@ts-ignore
     @external("env", "identity_state")
     // Reads identity status by address
-    export declare function identityState(addr: usize): i32
+    export declare function identityState(addr: usize): usize
 
     //@ts-ignore
     @external("env", "caller")
     // Reads predecessor of contract
-    export declare function caller(): i32
+    export declare function caller(): usize
 
     //@ts-ignore
     @external("env", "originalCaller")
     // Reads signer of original transaction
-    export declare function originalCaller(): i32
+    export declare function originalCaller(): usize
 
     //@ts-ignore
     @external("env", "create_call_function_promise")
@@ -106,4 +106,13 @@ export namespace env {
     @external("env", "balance")
     // Reads balance of addr
     export declare function balance(addr: usize): i32
+
+    @external("env", "code_hash")
+    export declare function codeHash() : i32
+
+    @external("env", "code")
+    export declare function code() : i32
+
+    @external("env", "contract_addr_by_hash")
+    export declare function contractAddressByHash(code_hash : usize, args : usize, nonce : usize ) : i32
 }

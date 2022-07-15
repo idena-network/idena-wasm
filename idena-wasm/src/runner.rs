@@ -21,7 +21,7 @@ use crate::imports::*;
 use crate::limiting_tunables::LimitingTunables;
 use crate::memory::{read_region, VmResult};
 use crate::proto::models::InvocationContext as protoContext;
-use crate::types::{Action, ActionResult, Address, FunctionCallAction, InvocationContext, PromiseResult};
+use crate::types::{Action, ActionResult, Address, DeployContractAction, FunctionCallAction, InvocationContext, PromiseResult};
 use crate::types::PromiseResult::Failed;
 
 pub struct VmRunner {}
@@ -144,7 +144,7 @@ impl VmRunner {
             match &p.action {
                 Action::FunctionCall(call) => {
                     let mut gas_used = 0;
-                    println!("promise recipient = {:?}", p.receiver_id);
+                    println!("promise recipient = {:x?}", p.receiver_id);
                     let action_result = Self::apply_function_call(api, p.receiver_id.to_vec(), call, None, &mut gas_used, false);
 
                     let promise_result = match action_result {
@@ -185,7 +185,7 @@ impl VmRunner {
                 }
                 Action::DeployContract(deploy) => {
                     let mut gas_used = 0;
-                    println!("promise recipient = {:?}", p.receiver_id);
+                    println!("promise recipient = {:x?}", p.receiver_id);
 
                     let (action_result, gas) = api.deploy(&deploy.code, &deploy.args, &deploy.nonce, &deploy.deposit, deploy.gas_limit);
                     gas_used = gas;
@@ -205,7 +205,7 @@ impl VmRunner {
                                 api.add_balance(p.predecessor_id.to_vec(), deploy.deposit.to_vec());
                                 api.commit();
                             }
-                            result.push(Self::action_result_from_err(err.into(), "deploy", gas_used, deploy.gas_limit));
+                            result.push(Self::action_result_from_err2(err.into(), p.action.clone(), gas_used, deploy.gas_limit));
                             Some(PromiseResult::Failed)
                         }
                     };
@@ -236,7 +236,8 @@ impl VmRunner {
         result
     }
 
-    pub fn deploy<B: Backend + 'static>(api: B, code: Vec<u8>, args: protobuf::RepeatedField<Vec<u8>>, gas_limit: u64, gas_used: &mut u64) -> VmResult<ActionResult> {
+    pub fn deploy<B: Backend + 'static>(api: B, code: Vec<u8>, arg_bytes: &[u8], gas_limit: u64, gas_used: &mut u64) -> VmResult<ActionResult> {
+        let args = convert_args(arg_bytes)?;
         let (env, module, instance) = Self::build_env(api, code, None, gas_limit)?;
 
         let required_export = ["allocate", "deploy", "memory"];
@@ -261,11 +262,19 @@ impl VmRunner {
             }
         };
 
+        let input_action = Action::DeployContract(DeployContractAction {
+            gas_limit: gas_limit,
+            deposit: vec![],
+            args: arg_bytes.to_vec(),
+            nonce: vec![],
+            code: vec![],
+        });
+
         if res.is_err() {
-            return Ok(Self::action_result_from_err(res.err().unwrap(), "deploy", *gas_used, gas_limit));
+            return Ok(Self::action_result_from_err2(res.err().unwrap(), input_action, *gas_used, gas_limit));
         }
         api.commit().0?;
-        let mut res = Self::action_result_from_success("deploy", vec![], *gas_used, gas_limit);
+        let mut res = Self::action_result_from_success2(input_action, vec![], *gas_used, gas_limit);
         res.append_sub_action_results(Self::execute_promises(api, env));
         Ok(res)
     }
@@ -327,6 +336,19 @@ impl VmRunner {
         Ok(res)
     }
 
+
+    fn action_result_from_err2(err: VmError, input_action: Action, gas_used: u64, gas_limit: u64) -> ActionResult {
+        ActionResult {
+            error: err.to_string(),
+            success: false,
+            gas_used: gas_used,
+            remaining_gas: gas_limit.saturating_sub(gas_used),
+            input_action: input_action,
+            sub_action_results: vec![],
+            output_data: vec![],
+        }
+    }
+
     fn action_result_from_err(err: VmError, method: &str, gas_used: u64, gas_limit: u64) -> ActionResult {
         ActionResult {
             error: err.to_string(),
@@ -343,6 +365,19 @@ impl VmRunner {
             output_data: vec![],
         }
     }
+
+    fn action_result_from_success2(input_action: Action, output_data: Vec<u8>, gas_used: u64, gas_limit: u64) -> ActionResult {
+        ActionResult {
+            error: String::new(),
+            success: true,
+            gas_used: gas_used,
+            remaining_gas: gas_limit.saturating_sub(gas_used),
+            input_action: input_action,
+            sub_action_results: vec![],
+            output_data: output_data,
+        }
+    }
+
     fn action_result_from_success(method: &str, output_data: Vec<u8>, gas_used: u64, gas_limit: u64) -> ActionResult {
         ActionResult {
             error: String::new(),

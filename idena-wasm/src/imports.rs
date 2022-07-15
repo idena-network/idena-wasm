@@ -11,6 +11,7 @@ use crate::unwrap_or_return;
 
 const MAX_STORAGE_KEY_SIZE: usize = 32;
 const MAX_ADDRESS_SIZE: usize = 20;
+const MAX_CODE_SIZE: usize = 1024 * 1024;
 const MAX_IDNA_SIZE: usize = 32;
 const MAX_STORAGE_VALUE_SIZE: usize = 128 * 1024;
 
@@ -295,7 +296,7 @@ pub fn promise_result<B: Backend>(env: &Env<B>, result: u32) -> VmResult<i32> {
 pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, amount: u32, gas_limit: u32) -> VmResult<u32> {
     let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
     let method = read_region(&env.memory(), method, 1024)?;
-    let args = read_region(&env.memory(), args, 1024)?;
+    let args = if args > 0 { read_region(&env.memory(), args, 1024)? } else { vec![] };
     let amountValue = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
 
     if !amountValue.is_empty() {
@@ -313,9 +314,9 @@ pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method:
 }
 
 pub fn create_deploy_contract_promise<B: Backend>(env: &Env<B>, code: u32, args: u32, nonce: u32, amount: u32, gas_limit: u32) -> VmResult<u32> {
-    let code = read_region(&env.memory(), code, MAX_ADDRESS_SIZE)?;
-    let args = read_region(&env.memory(), args, 1024)?;
-    let nonce = read_region(&env.memory(), nonce, 1024)?;
+    let code = read_region(&env.memory(), code, MAX_CODE_SIZE)?;
+    let args = if args > 0 { read_region(&env.memory(), args, 1024)? } else { vec![] };
+    let nonce = if nonce > 0 { read_region(&env.memory(), nonce, 1024)? } else { vec![] };
     let amountValue = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
 
     if !amountValue.is_empty() {
@@ -334,7 +335,7 @@ pub fn create_deploy_contract_promise<B: Backend>(env: &Env<B>, code: u32, args:
 
 pub fn promise_then<B: Backend>(env: &Env<B>, promise_idx: u32, method: u32, args: u32, amount: u32, gas_limit: u32) -> VmResult<()> {
     let method = read_region(&env.memory(), method, 1024)?;
-    let args = read_region(&env.memory(), args, 1024)?;
+    let args = if args > 0 { read_region(&env.memory(), args, 1024)? } else { vec![] };
     let amount = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
 
     if !amount.is_empty() {

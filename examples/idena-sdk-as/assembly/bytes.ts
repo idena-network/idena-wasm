@@ -33,6 +33,11 @@ export class Bytes extends Uint8Array {
     return d.getUint64(0, true);
   }
 
+  toU32(): u32 {
+    let d = new DataView(this.buffer);
+    return d.getUint32(0, true);
+  }
+
   static fromU64(n: u64): Bytes {    
     let bs = new Uint8Array(8);
     let d = new DataView(bs.buffer);

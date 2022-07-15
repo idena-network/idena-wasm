@@ -36,7 +36,7 @@ function strToPtr(data: string): usize {
 export function deploy(functionAddr: i32): void {
     let addr = Address.fromBytes(ptrToBytes(functionAddr));
 
-    debug(`deploy arg = ${addr}`)
+    debug(`deploy arg = ${addr.toHex()}`)
     contractAddr.set(addr)
 }
 
@@ -54,7 +54,7 @@ function packPlainArgument(data: Bytes): Bytes {
     memory.copy(result.dataStart + 1, data.dataStart, data.length)
     return result
 }
-1
+
 export function _sum(y: i32): void {
     let yValue = ptrToBytes(y).toU64()
 

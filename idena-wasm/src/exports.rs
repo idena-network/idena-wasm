@@ -772,7 +772,7 @@ fn do_deploy(api: GoApi, code: ByteSliceView,
 
     println!("deploy code: code len={}, args={:?}, gas limit={}", data.len(), args, gas_limit);
 
-    VmRunner::deploy(apiWrapper::new(api), data, args, gas_limit, gas_used)
+    VmRunner::deploy(apiWrapper::new(api), data, arguments_bytes, gas_limit, gas_used)
 }
 
 

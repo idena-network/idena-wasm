@@ -46,6 +46,10 @@ GoResult cidentity(api_t *ptr,  U8SliceView addr, uint64_t *used_gas, UnmanagedV
 typedef GoResult (*call_fn)(api_t *ptr,  U8SliceView addr, U8SliceView method,U8SliceView args, U8SliceView amount, U8SliceView ctx, uint64_t gas_limit, uint64_t *used_gas, UnmanagedVector *actionResult);
 GoResult ccall(api_t *ptr, U8SliceView addr, U8SliceView method,U8SliceView args, U8SliceView amount, U8SliceView ctx, uint64_t gas_limit, uint64_t *used_gas, UnmanagedVector *actionResult);
 
+typedef GoResult (*deploy_fn)(api_t *ptr,  U8SliceView code, U8SliceView args,U8SliceView nonce, U8SliceView amount, uint64_t gas_limit, uint64_t *used_gas, UnmanagedVector *actionResult);
+GoResult cdeploy(api_t *ptr, U8SliceView code, U8SliceView args,U8SliceView nonce, U8SliceView amount, uint64_t gas_limit, uint64_t *used_gas, UnmanagedVector *actionResult);
+
+
 typedef GoResult (*caller_fn)(api_t *ptr,  uint64_t *used_gas,  UnmanagedVector *data);
 GoResult ccaller(api_t *ptr, uint64_t *used_gas, UnmanagedVector *data);
 
@@ -114,6 +118,7 @@ var api_vtable = C.GoApi_vtable{
 	contract:          (C.contract_fn)(C.ccontract),
 	contract_code:     (C.contract_code_fn)(C.ccontract_code),
 	call:              (C.call_fn)(C.ccall),
+	deploy:            (C.deploy_fn)(C.cdeploy),
 	contract_addr:     (C.contract_addr_fn)(C.ccontract_addr),
 }
 
@@ -325,7 +330,7 @@ func ccall(ptr *C.api_t, addr C.U8SliceView, method C.U8SliceView, args C.U8Slic
 		return C.GoResult_Other
 	}
 
-	subHost, err := api.host.CreateSubEnv(address, big.NewInt(0).SetBytes(copyU8Slice(amount)))
+	subHost, err := api.host.CreateSubEnv(address, big.NewInt(0).SetBytes(copyU8Slice(amount)), false)
 	if err != nil {
 		*gasUsed = gasLimit
 		return C.GoResult_Other
@@ -337,11 +342,10 @@ func ccall(ptr *C.api_t, addr C.U8SliceView, method C.U8SliceView, args C.U8Slic
 	}
 	subCallGasUsed, actionResultBytes, err := execute(subApi, code, copyU8Slice(method), copyU8Slice(args), copyU8Slice(invocationContext), uint64(gasLimit))
 	println(fmt.Sprintf("sub call err: %v", err))
-	if err != nil {
+	if err == nil {
 		api.host.Commit()
-	} else {
-		api.host.Revert()
 	}
+	api.host.Clear()
 	*gasUsed = cu64(subCallGasUsed)
 	*actionResult = newUnmanagedVector(actionResultBytes)
 	if err != nil {
@@ -361,7 +365,7 @@ func cdeploy(ptr *C.api_t, code C.U8SliceView, args C.U8SliceView, nonce C.U8Sli
 
 	addr := api.host.ContractAddr(api.gasMeter, codeBytes, argsBytes, nonceBytes)
 
-	subHost, err := api.host.CreateSubEnv(addr, big.NewInt(0).SetBytes(copyU8Slice(amount)))
+	subHost, err := api.host.CreateSubEnv(addr, big.NewInt(0).SetBytes(copyU8Slice(amount)), true)
 	if err != nil {
 		*gasUsed = gasLimit
 		return C.GoResult_Other
@@ -373,11 +377,12 @@ func cdeploy(ptr *C.api_t, code C.U8SliceView, args C.U8SliceView, nonce C.U8Sli
 	}
 	subCallGasUsed, actionResultBytes, err := deploy(subApi, codeBytes, argsBytes, uint64(gasLimit))
 	println(fmt.Sprintf("deploy err: %v", err))
-	if err != nil {
-		api.host.Commit()
-	} else {
-		api.host.Revert()
+	if err == nil {
+		subHost.Deploy(codeBytes)
+		subHost.Commit()
 	}
+	api.host.Commit()
+	api.host.Clear()
 	*gasUsed = cu64(subCallGasUsed)
 	*actionResult = newUnmanagedVector(actionResultBytes)
 	if err != nil {
@@ -421,6 +426,7 @@ func ccommit(ptr *C.api_t) (ret C.GoResult) {
 	api := (*GoAPI)(unsafe.Pointer(ptr))
 	defer recoverPanic(&ret, api, nil)
 	api.host.Commit()
+	api.host.Clear()
 	return C.GoResult_Ok
 }
 
