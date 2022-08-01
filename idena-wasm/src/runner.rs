@@ -11,6 +11,7 @@ use wasmer_middlewares::Metering;
 use wasmer_middlewares::metering::{get_remaining_points, MeteringPoints};
 use wasmer_types::ModuleInfo;
 
+use crate::{unwrap_or_action_res, unwrap_or_return};
 use crate::args::convert_args;
 use crate::backend::{Backend, BackendResult};
 use crate::costs::*;
@@ -21,7 +22,7 @@ use crate::imports::*;
 use crate::limiting_tunables::LimitingTunables;
 use crate::memory::{read_region, VmResult};
 use crate::proto::models::InvocationContext as protoContext;
-use crate::types::{Action, ActionResult, Address, DeployContractAction, FunctionCallAction, InvocationContext, PromiseResult};
+use crate::types::{Action, ActionResult, Address, DeployContractAction, FunctionCallAction, InvocationContext, Promise, PromiseResult};
 use crate::types::PromiseResult::Failed;
 
 pub struct VmRunner {}
@@ -100,7 +101,11 @@ impl VmRunner {
             "create_transfer_promise" => Function::new_native_with_env(&store, env.clone(), create_transfer_promise),
             "promise_result" => Function::new_native_with_env(&store, env.clone(), crate::imports::promise_result),
             "promise_then" => Function::new_native_with_env(&store, env.clone(), promise_then),
-            "contract" => Function::new_native_with_env(&store, env.clone(), contract)
+            "own_addr" => Function::new_native_with_env(&store, env.clone(), own_addr),
+            "own_code" => Function::new_native_with_env(&store, env.clone(), own_code),
+            "contract_addr" => Function::new_native_with_env(&store, env.clone(), contract_addr),
+            "contract_addr_by_hash" => Function::new_native_with_env(&store, env.clone(), contract_addr_by_hash),
+            "code_hash" => Function::new_native_with_env(&store, env.clone(), code_hash),
             }
         };
         let module = match Module::new(&store, code) {
@@ -162,26 +167,12 @@ impl VmRunner {
                                 api.add_balance(p.predecessor_id.to_vec(), call.deposit.to_vec());
                                 api.commit();
                             }
-                            result.push(Self::action_result_from_err(err, call.method_name.as_str(), gas_used, call.gas_limit));
+                            result.push(Self::action_result_from_err2(err, p.action.clone(), gas_used, call.gas_limit));
                             Some(PromiseResult::Failed)
                         }
                     };
 
-                    if p.action_callback.is_some() {
-                        match p.action_callback.clone().unwrap() {
-                            Action::FunctionCall(call) => {
-                                let mut gas_used = 0;
-                                let action_result = Self::apply_function_call(api, api.contract().0.unwrap(), &call, promise_result, &mut gas_used, true);
-                                if action_result.is_err() && !call.deposit.is_empty() {
-                                    // refund deposit
-                                    api.add_balance(p.predecessor_id.to_vec(), call.deposit.to_vec());
-                                    api.commit();
-                                }
-                                result.push(action_result.unwrap_or_else(|err| Self::action_result_from_err(err, call.method_name.as_str(), gas_used, call.gas_limit)));
-                            }
-                            _ => unreachable!(),
-                        };
-                    }
+                    Self::run_callback(api, &mut result, p, promise_result)
                 }
                 Action::DeployContract(deploy) => {
                     let mut gas_used = 0;
@@ -210,21 +201,7 @@ impl VmRunner {
                         }
                     };
 
-                    if p.action_callback.is_some() {
-                        match p.action_callback.clone().unwrap() {
-                            Action::FunctionCall(call) => {
-                                let mut gas_used = 0;
-                                let action_result = Self::apply_function_call(api, api.contract().0.unwrap(), &call, promise_result, &mut gas_used, true);
-                                if action_result.is_err() && !call.deposit.is_empty() {
-                                    // refund deposit
-                                    api.add_balance(p.predecessor_id.to_vec(), call.deposit.to_vec());
-                                    api.commit();
-                                }
-                                result.push(action_result.unwrap_or_else(|err| Self::action_result_from_err(err, call.method_name.as_str(), gas_used, call.gas_limit)));
-                            }
-                            _ => unreachable!(),
-                        };
-                    }
+                    Self::run_callback(api, &mut result, p, promise_result)
                 }
                 Action::Transfer(t) => {
                     //todo : handle result
@@ -236,9 +213,40 @@ impl VmRunner {
         result
     }
 
-    pub fn deploy<B: Backend + 'static>(api: B, code: Vec<u8>, arg_bytes: &[u8], gas_limit: u64, gas_used: &mut u64) -> VmResult<ActionResult> {
+    fn run_callback<B: Backend + 'static>(api: B, result: &mut Vec<ActionResult>, p: &Promise, promise_result: Option<PromiseResult>) {
+        if p.action_callback.is_some() {
+            let action = p.action_callback.as_ref().unwrap().clone();
+            match action {
+                Action::FunctionCall(ref call) => {
+                    let mut gas_used = 0;
+                    let action_result = Self::apply_function_call(api, api.own_addr().0.unwrap(), &call, promise_result, &mut gas_used, true);
+                    if action_result.is_err() && !call.deposit.is_empty() {
+                        // refund deposit
+                        api.add_balance(p.predecessor_id.to_vec(), call.deposit.to_vec());
+                        api.commit();
+                    }
+                    result.push(action_result.unwrap_or_else(|err| Self::action_result_from_err2(err, action.clone(), gas_used, call.gas_limit)));
+                }
+                _ => unreachable!(),
+            };
+        }
+    }
+    pub fn deploy<B: Backend + 'static>(api: B, code: Vec<u8>, arg_bytes: &[u8], gas_limit: u64, gas_used: &mut u64) -> ActionResult {
+        *gas_used = BASE_DEPLOY_COST;
+        let input_action = Action::DeployContract(DeployContractAction {
+            gas_limit: gas_limit,
+            deposit: vec![],
+            args: arg_bytes.to_vec(),
+            nonce: vec![],
+            code: vec![], // drop code
+        });
+        let (env, module, instance) = unwrap_or_action_res!(Self::build_env(api, code, None, gas_limit), input_action, *gas_used, gas_limit);
+
+        unwrap_or_action_res!(Self::deploy_with_env(env, module,  api, input_action.clone(),  arg_bytes, gas_limit, gas_used), input_action, *gas_used, gas_limit)
+    }
+    pub fn deploy_with_env<B: Backend + 'static>(env: Env<B>, module: Module, api: B, input_action: Action, arg_bytes: &[u8], gas_limit: u64, gas_used: &mut u64) -> VmResult<ActionResult> {
+        process_gas_info(&env, BASE_DEPLOY_COST)?;
         let args = convert_args(arg_bytes)?;
-        let (env, module, instance) = Self::build_env(api, code, None, gas_limit)?;
 
         let required_export = ["allocate", "deploy", "memory"];
         let module_info = module.info();
@@ -262,36 +270,44 @@ impl VmRunner {
             }
         };
 
-        let input_action = Action::DeployContract(DeployContractAction {
-            gas_limit: gas_limit,
-            deposit: vec![],
-            args: arg_bytes.to_vec(),
-            nonce: vec![],
-            code: vec![],
-        });
 
         if res.is_err() {
             return Ok(Self::action_result_from_err2(res.err().unwrap(), input_action, *gas_used, gas_limit));
         }
-        api.commit().0?;
+        //api.commit().0?;
         let mut res = Self::action_result_from_success2(input_action, vec![], *gas_used, gas_limit);
         res.append_sub_action_results(Self::execute_promises(api, env));
         Ok(res)
     }
 
+    pub fn execute<B: Backend + 'static>(api: B, code: Vec<u8>, method: &String, arg_bytes: &[u8], gas_limit: u64, gas_used: &mut u64, invocation_ctx: InvocationContext) -> ActionResult {
+        *gas_used = BASE_CALL_COST;
 
-    pub fn execute<B: Backend + 'static>(api: B, code: Vec<u8>, method: &String, args: protobuf::RepeatedField<Vec<u8>>, gas_limit: u64, gas_used: &mut u64, invocation_ctx: InvocationContext) -> VmResult<ActionResult> {
-        let (env, module, instance) = Self::build_env(api, code, invocation_ctx.promise_result, gas_limit)?;
-        Self::execute_with_env(env, module, api, method, args, gas_limit, gas_used, invocation_ctx.is_callback)
+        let input_action = Action::FunctionCall(FunctionCallAction {
+            gas_limit,
+            deposit: vec![],
+            args: arg_bytes.to_vec(),
+            method_name: method.to_string(),
+        });
+
+        let (env, module, instance) = unwrap_or_action_res!(Self::build_env(api, code, invocation_ctx.promise_result, gas_limit),
+            input_action,  *gas_used, gas_limit);
+
+        unwrap_or_action_res!(process_gas_info(&env, BASE_CALL_COST), input_action, *gas_used, gas_limit);
+        unwrap_or_action_res!(Self::execute_with_env(env, module, api, input_action.clone(), method, arg_bytes, gas_limit, gas_used, invocation_ctx.is_callback), input_action, *gas_used, gas_limit)
     }
 
-    pub fn execute_with_env<B: Backend + 'static>(env: Env<B>, module: Module, api: B, method: &String, args: protobuf::RepeatedField<Vec<u8>>, gas_limit: u64, gas_used: &mut u64, is_callback: bool) -> VmResult<ActionResult> {
+    pub fn execute_with_env<B: Backend + 'static>(env: Env<B>, module: Module, api: B, input_action: Action, method: &String, arg_bytes: &[u8], gas_limit: u64, gas_used: &mut u64, is_callback: bool) -> VmResult<ActionResult> {
+        process_gas_info(&env, BASE_CALL_COST)?;
+
         if method == "deploy" {
             return Err(VmError::custom("direct call to deploy is forbidden'"));
         }
         if !is_callback && method.starts_with("_") {
             return Err(VmError::custom("direct call to promise callback is forbidden'"));
         }
+
+        let args = convert_args(arg_bytes)?;
 
         let wasm_args = Self::prepare_arguments(&env.clone(), module.info(), &method, args)?;
         let mut output_data = vec![];
@@ -319,10 +335,10 @@ impl VmRunner {
         println!("gas used while running WASM : {}", *gas_used);
 
         if res.is_err() {
-            return Ok(Self::action_result_from_err(res.err().unwrap(), method.as_str(), *gas_used, gas_limit));
+            return Ok(Self::action_result_from_err2(res.err().unwrap(), input_action, *gas_used, gas_limit));
         }
-        api.commit().0?;
-        let mut res = Self::action_result_from_success(method.as_str(), output_data, *gas_used, gas_limit);
+        //api.commit().0?;
+        let mut res = Self::action_result_from_success2(input_action, output_data, *gas_used, gas_limit);
         res.append_sub_action_results(Self::execute_promises(api, env));
 
         let gas_refund = res.sub_action_results.iter().fold(0, |a, x| a + x.remaining_gas);
@@ -349,23 +365,6 @@ impl VmRunner {
         }
     }
 
-    fn action_result_from_err(err: VmError, method: &str, gas_used: u64, gas_limit: u64) -> ActionResult {
-        ActionResult {
-            error: err.to_string(),
-            success: false,
-            gas_used: gas_used,
-            remaining_gas: gas_limit.saturating_sub(gas_used),
-            input_action: Action::FunctionCall(FunctionCallAction {
-                method_name: method.to_string(),
-                gas_limit: gas_limit,
-                deposit: vec![],
-                args: vec![],
-            }),
-            sub_action_results: vec![],
-            output_data: vec![],
-        }
-    }
-
     fn action_result_from_success2(input_action: Action, output_data: Vec<u8>, gas_used: u64, gas_limit: u64) -> ActionResult {
         ActionResult {
             error: String::new(),
@@ -377,21 +376,5 @@ impl VmRunner {
             output_data: output_data,
         }
     }
-
-    fn action_result_from_success(method: &str, output_data: Vec<u8>, gas_used: u64, gas_limit: u64) -> ActionResult {
-        ActionResult {
-            error: String::new(),
-            success: true,
-            gas_used: gas_used,
-            remaining_gas: gas_limit.saturating_sub(gas_used),
-            input_action: Action::FunctionCall(FunctionCallAction {
-                method_name: method.to_string(),
-                gas_limit: 0,
-                deposit: vec![],
-                args: vec![],
-            }),
-            sub_action_results: vec![],
-            output_data: output_data,
-        }
-    }
 }
+

@@ -137,7 +137,7 @@ impl<B: Backend> Env<B> {
     }
 
     pub fn create_transfer_promise(&self, to: Address, amount: IDNA) -> BackendResult<()> {
-        let (own_addr_res, gas_used) = self.backend.contract();
+        let (own_addr_res, gas_used) = self.backend.own_addr();
         let own_addr = unwrap_or_return!(own_addr_res, gas_used);
         self.with_context_data_mut(|data| {
             data.pending_promises.push(Promise {
@@ -154,7 +154,7 @@ impl<B: Backend> Env<B> {
 
 
     pub fn create_function_call_promise(&self, to: Address, method: Vec<u8>, args: Vec<u8>, amount: IDNA, gas_limit: u64) -> BackendResult<u32> {
-        let (own_addr_res, gas_used) = self.backend.contract();
+        let (own_addr_res, gas_used) = self.backend.own_addr();
         let own_addr = unwrap_or_return!(own_addr_res, gas_used);
         self.with_context_data_mut(|data| {
             data.pending_promises.push(Promise {
@@ -173,7 +173,7 @@ impl<B: Backend> Env<B> {
     }
 
     pub fn create_deploy_contract_promise(&self, code: Vec<u8>, args: Vec<u8>, nonce: Vec<u8>, amount: IDNA, gas_limit: u64) -> BackendResult<u32> {
-        let (own_addr_res, mut gas_used) = self.backend.contract();
+        let (own_addr_res, mut gas_used) = self.backend.own_addr();
         let own_addr = unwrap_or_return!(own_addr_res, gas_used);
 
         let (to_res, gas) = self.backend.contract_addr(&code, &args, &nonce);

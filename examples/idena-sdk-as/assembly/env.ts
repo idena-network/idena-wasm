@@ -98,9 +98,9 @@ export namespace env {
     export declare function promiseResult(result : usize): i32
 
     //@ts-ignore
-    @external("env", "contract")
+    @external("env", "own_addr")
     // Reads address of current contract
-    export declare function contract(): i32
+    export declare function ownAddress(): i32
 
     //@ts-ignore
     @external("env", "balance")
@@ -110,7 +110,7 @@ export namespace env {
     @external("env", "code_hash")
     export declare function codeHash() : i32
 
-    @external("env", "code")
+    @external("env", "own_code")
     export declare function code() : i32
 
     @external("env", "contract_addr_by_hash")

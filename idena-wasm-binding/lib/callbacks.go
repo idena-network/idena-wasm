@@ -71,14 +71,25 @@ GoResult ccontract(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
 typedef GoResult (*contract_code_fn)(api_t *ptr, U8SliceView addr, uint64_t *used_gas,  UnmanagedVector *result);
 GoResult ccontract_code(api_t *ptr, U8SliceView addr, uint64_t *used_gas,  UnmanagedVector *result);
 
-
 typedef GoResult (*contract_addr_fn)(api_t *ptr, U8SliceView code, U8SliceView args, U8SliceView nonce, uint64_t *used_gas,  UnmanagedVector *result);
 GoResult ccontract_addr(api_t *ptr, U8SliceView code, U8SliceView args, U8SliceView nonce, uint64_t *used_gas,  UnmanagedVector *result);
+
+typedef GoResult (*contract_addr_by_hash_fn)(api_t *ptr, U8SliceView hash, U8SliceView args, U8SliceView nonce, uint64_t *used_gas,  UnmanagedVector *result);
+GoResult ccontract_addr_by_hash(api_t *ptr, U8SliceView hash, U8SliceView args, U8SliceView nonce, uint64_t *used_gas,  UnmanagedVector *result);
+
+typedef GoResult (*own_code_fn)(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
+GoResult cown_code(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
+
+typedef GoResult (*code_hash_fn)(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
+GoResult ccode_hash(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
+
 
 */
 import "C"
 import (
 	"fmt"
+	"github.com/golang/protobuf/proto"
+	models "github.com/idena-network/idena-wasm-binding/lib/protobuf"
 	"log"
 	"math/big"
 	"unsafe"
@@ -97,29 +108,32 @@ func NewGoAPI(env HostEnv, gasMeter *GasMeter) *GoAPI {
 }
 
 var api_vtable = C.GoApi_vtable{
-	set_remaining_gas: (C.set_remaining_gas_fn)(C.cset_remaining_gas),
-	set_storage:       (C.set_storage_fn)(C.cset_storage),
-	get_storage:       (C.get_storage_fn)(C.cget_storage),
-	remove_storage:    (C.remove_storage_fn)(C.cremove_storage),
-	block_timestamp:   (C.block_timestamp_fn)(C.cblock_timestamp),
-	block_number:      (C.block_number_fn)(C.cblock_number),
-	min_fee_per_gas:   (C.min_fee_per_gas_fn)(C.cmin_fee_per_gas),
-	balance:           (C.balance_fn)(C.cbalance),
-	block_seed:        (C.block_seed_fn)(C.cblock_seed),
-	network_size:      (C.network_size_fn)(C.cnetwork_size),
-	identity_state:    (C.identity_state_fn)(C.cidentity_state),
-	send:              (C.send_fn)(C.csend),
-	identity:          (C.identity_fn)(C.cidentity),
-	caller:            (C.caller_fn)(C.ccaller),
-	original_caller:   (C.original_caller_fn)(C.coriginal_caller),
-	commit:            (C.commit_fn)(C.ccommit),
-	deduct_balance:    (C.deduct_balance_fn)(C.cdeduct_balance),
-	add_balance:       (C.add_balance_fn)(C.cadd_balance),
-	contract:          (C.contract_fn)(C.ccontract),
-	contract_code:     (C.contract_code_fn)(C.ccontract_code),
-	call:              (C.call_fn)(C.ccall),
-	deploy:            (C.deploy_fn)(C.cdeploy),
-	contract_addr:     (C.contract_addr_fn)(C.ccontract_addr),
+	set_remaining_gas:     (C.set_remaining_gas_fn)(C.cset_remaining_gas),
+	set_storage:           (C.set_storage_fn)(C.cset_storage),
+	get_storage:           (C.get_storage_fn)(C.cget_storage),
+	remove_storage:        (C.remove_storage_fn)(C.cremove_storage),
+	block_timestamp:       (C.block_timestamp_fn)(C.cblock_timestamp),
+	block_number:          (C.block_number_fn)(C.cblock_number),
+	min_fee_per_gas:       (C.min_fee_per_gas_fn)(C.cmin_fee_per_gas),
+	balance:               (C.balance_fn)(C.cbalance),
+	block_seed:            (C.block_seed_fn)(C.cblock_seed),
+	network_size:          (C.network_size_fn)(C.cnetwork_size),
+	identity_state:        (C.identity_state_fn)(C.cidentity_state),
+	send:                  (C.send_fn)(C.csend),
+	identity:              (C.identity_fn)(C.cidentity),
+	caller:                (C.caller_fn)(C.ccaller),
+	original_caller:       (C.original_caller_fn)(C.coriginal_caller),
+	commit:                (C.commit_fn)(C.ccommit),
+	deduct_balance:        (C.deduct_balance_fn)(C.cdeduct_balance),
+	add_balance:           (C.add_balance_fn)(C.cadd_balance),
+	contract:              (C.contract_fn)(C.ccontract),
+	contract_code:         (C.contract_code_fn)(C.ccontract_code),
+	call:                  (C.call_fn)(C.ccall),
+	deploy:                (C.deploy_fn)(C.cdeploy),
+	contract_addr:         (C.contract_addr_fn)(C.ccontract_addr),
+	contract_addr_by_hash: (C.contract_addr_by_hash_fn)(C.ccontract_addr_by_hash),
+	own_code:              (C.own_code_fn)(C.cown_code),
+	code_hash:             (C.code_hash_fn)(C.ccode_hash),
 }
 
 // contract: original pointer/struct referenced must live longer than C.GoApi struct
@@ -325,14 +339,26 @@ func ccall(ptr *C.api_t, addr C.U8SliceView, method C.U8SliceView, args C.U8Slic
 	address := newAddress(copyU8Slice(addr))
 
 	code := api.host.GetCode(address)
+
+	setActionResult := func(err string) {
+		actionResultObj := models.ActionResult{}
+		actionResultObj.Success = false
+		actionResultObj.Error = "code is empty"
+		actionResultObj.GasUsed = 0
+		actionResultObj.RemainingGas = uint64(gasLimit)
+		if data, err := proto.Marshal(&actionResultObj); err != nil {
+			*actionResult = newUnmanagedVector(data)
+		}
+	}
+
 	if len(code) == 0 {
-		*gasUsed = gasLimit
+		setActionResult("code is empty")
 		return C.GoResult_Other
 	}
 
 	subHost, err := api.host.CreateSubEnv(address, big.NewInt(0).SetBytes(copyU8Slice(amount)), false)
 	if err != nil {
-		*gasUsed = gasLimit
+		setActionResult(err.Error())
 		return C.GoResult_Other
 	}
 	meter := GasMeter{}
@@ -341,11 +367,9 @@ func ccall(ptr *C.api_t, addr C.U8SliceView, method C.U8SliceView, args C.U8Slic
 		gasMeter: &meter,
 	}
 	subCallGasUsed, actionResultBytes, err := execute(subApi, code, copyU8Slice(method), copyU8Slice(args), copyU8Slice(invocationContext), uint64(gasLimit))
-	println(fmt.Sprintf("sub call err: %v", err))
 	if err == nil {
-		api.host.Commit()
+		subHost.Commit()
 	}
-	api.host.Clear()
 	*gasUsed = cu64(subCallGasUsed)
 	*actionResult = newUnmanagedVector(actionResultBytes)
 	if err != nil {
@@ -363,11 +387,22 @@ func cdeploy(ptr *C.api_t, code C.U8SliceView, args C.U8SliceView, nonce C.U8Sli
 	argsBytes := copyU8Slice(args)
 	nonceBytes := copyU8Slice(nonce)
 
+	setActionResult := func(err string) {
+		actionResultObj := models.ActionResult{}
+		actionResultObj.Success = false
+		actionResultObj.Error = "code is empty"
+		actionResultObj.GasUsed = 0
+		actionResultObj.RemainingGas = uint64(gasLimit)
+		if data, err := proto.Marshal(&actionResultObj); err != nil {
+			*actionResult = newUnmanagedVector(data)
+		}
+	}
+
 	addr := api.host.ContractAddr(api.gasMeter, codeBytes, argsBytes, nonceBytes)
 
 	subHost, err := api.host.CreateSubEnv(addr, big.NewInt(0).SetBytes(copyU8Slice(amount)), true)
 	if err != nil {
-		*gasUsed = gasLimit
+		setActionResult(err.Error())
 		return C.GoResult_Other
 	}
 	meter := GasMeter{}
@@ -375,14 +410,12 @@ func cdeploy(ptr *C.api_t, code C.U8SliceView, args C.U8SliceView, nonce C.U8Sli
 		host:     subHost,
 		gasMeter: &meter,
 	}
+	subHost.Deploy(codeBytes)
 	subCallGasUsed, actionResultBytes, err := deploy(subApi, codeBytes, argsBytes, uint64(gasLimit))
 	println(fmt.Sprintf("deploy err: %v", err))
 	if err == nil {
-		subHost.Deploy(codeBytes)
 		subHost.Commit()
 	}
-	api.host.Commit()
-	api.host.Clear()
 	*gasUsed = cu64(subCallGasUsed)
 	*actionResult = newUnmanagedVector(actionResultBytes)
 	if err != nil {
@@ -504,6 +537,49 @@ func ccontract_addr(ptr *C.api_t, code C.U8SliceView, args C.U8SliceView, nonce 
 
 	address := api.host.ContractAddr(api.gasMeter, codeBytes, argsBytes, nonceBytes)
 	*result = newUnmanagedVector(address[:])
+	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
+
+	return C.GoResult_Ok
+}
+
+//export ccontract_addr_by_hash
+func ccontract_addr_by_hash(ptr *C.api_t, hash C.U8SliceView, args C.U8SliceView, nonce C.U8SliceView, gasUsed *cu64, result *C.UnmanagedVector) (ret C.GoResult) {
+	api := (*GoAPI)(unsafe.Pointer(ptr))
+	defer recoverPanic(&ret, api, gasUsed)
+	codeBytes := copyU8Slice(hash)
+	argsBytes := copyU8Slice(args)
+	nonceBytes := copyU8Slice(nonce)
+
+	gasBefore := api.gasMeter.GasConsumed()
+
+	address := api.host.ContractAddrByHash(api.gasMeter, codeBytes, argsBytes, nonceBytes)
+	*result = newUnmanagedVector(address[:])
+	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
+
+	return C.GoResult_Ok
+}
+
+//export cown_code
+func cown_code(ptr *C.api_t, gasUsed *cu64, result *C.UnmanagedVector) (ret C.GoResult) {
+	api := (*GoAPI)(unsafe.Pointer(ptr))
+	defer recoverPanic(&ret, api, gasUsed)
+
+	gasBefore := api.gasMeter.GasConsumed()
+	code := api.host.OwnCode(api.gasMeter)
+	*result = newUnmanagedVector(code)
+	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
+
+	return C.GoResult_Ok
+}
+
+//export ccode_hash
+func ccode_hash(ptr *C.api_t, gasUsed *cu64, result *C.UnmanagedVector) (ret C.GoResult) {
+	api := (*GoAPI)(unsafe.Pointer(ptr))
+	defer recoverPanic(&ret, api, gasUsed)
+
+	gasBefore := api.gasMeter.GasConsumed()
+	code := api.host.CodeHash(api.gasMeter)
+	*result = newUnmanagedVector(code)
 	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
 
 	return C.GoResult_Ok

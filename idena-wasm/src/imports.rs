@@ -314,6 +314,7 @@ pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method:
 }
 
 pub fn create_deploy_contract_promise<B: Backend>(env: &Env<B>, code: u32, args: u32, nonce: u32, amount: u32, gas_limit: u32) -> VmResult<u32> {
+    println!("creating deploy promise codePtr = {:}, {:}, {:}, {:}, {:}", code, args, nonce, amount, gas_limit);
     let code = read_region(&env.memory(), code, MAX_CODE_SIZE)?;
     let args = if args > 0 { read_region(&env.memory(), args, 1024)? } else { vec![] };
     let nonce = if nonce > 0 { read_region(&env.memory(), nonce, 1024)? } else { vec![] };
@@ -362,10 +363,10 @@ pub fn create_transfer_promise<B: Backend>(env: &Env<B>, addr: u32, amount: u32)
     Ok(())
 }
 
-pub fn contract<B: Backend>(env: &Env<B>) -> VmResult<u32> {
+pub fn own_addr<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
     env.backend.set_remaining_gas(gas_left);
-    let (res, gas) = env.backend.contract();
+    let (res, gas) = env.backend.own_addr();
     process_gas_info(env, gas)?;
     let addr = match res {
         Ok(v) => v,
@@ -374,6 +375,62 @@ pub fn contract<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     write_to_contract(env, &addr)
 }
 
+pub fn contract_addr<B: Backend>(env: &Env<B>, code: u32, args: u32, nonce: u32) -> VmResult<u32> {
+    let code = read_region(&env.memory(), code, MAX_CODE_SIZE)?;
+    let args = if args > 0 { read_region(&env.memory(), args, 1024)? } else { vec![] };
+    let nonce = if nonce > 0 { read_region(&env.memory(), nonce, 1024)? } else { vec![] };
+
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.contract_addr(&code, &args, &nonce);
+    process_gas_info(env, gas)?;
+    let addr = match res {
+        Ok(v) => v,
+        Err(err) => return Err(err.into())
+    };
+    write_to_contract(env, &addr)
+}
+
+pub fn contract_addr_by_hash<B: Backend>(env: &Env<B>, hash: u32, args: u32, nonce: u32) -> VmResult<u32> {
+    let hash = read_region(&env.memory(), hash, MAX_CODE_SIZE)?;
+    let args = if args > 0 { read_region(&env.memory(), args, 1024)? } else { vec![] };
+    let nonce = if nonce > 0 { read_region(&env.memory(), nonce, 1024)? } else { vec![] };
+
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.contract_addr_by_hash(&hash, &args, &nonce);
+    process_gas_info(env, gas)?;
+    let addr = match res {
+        Ok(v) => v,
+        Err(err) => return Err(err.into())
+    };
+    write_to_contract(env, &addr)
+}
+
+
+pub fn own_code<B: Backend>(env: &Env<B>) -> VmResult<u32> {
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.own_code();
+    process_gas_info(env, gas)?;
+    let code = match res {
+        Ok(v) => v,
+        Err(err) => return Err(err.into())
+    };
+    write_to_contract(env, &code)
+}
+
+pub fn code_hash<B: Backend>(env: &Env<B>) -> VmResult<u32> {
+    let gas_left = env.get_gas_left();
+    env.backend.set_remaining_gas(gas_left);
+    let (res, gas) = env.backend.code_hash();
+    process_gas_info(env, gas)?;
+    let hash = match res {
+        Ok(v) => v,
+        Err(err) => return Err(err.into())
+    };
+    write_to_contract(env, &hash)
+}
 
 
 

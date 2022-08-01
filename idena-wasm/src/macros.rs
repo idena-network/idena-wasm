@@ -21,3 +21,21 @@ macro_rules! check_go_result {
         }
     }
 }
+
+#[macro_export]
+macro_rules! unwrap_or_action_res {
+    ($e:expr, $input_action:expr, $gas_used:expr, $gas_limit:expr ) => {
+        match $e {
+            Ok(x) => x,
+            Err(err) => return ActionResult {
+            error: err.to_string(),
+            success: false,
+            gas_used: $gas_used,
+            remaining_gas: $gas_limit.saturating_sub($gas_used),
+            input_action: $input_action,
+            sub_action_results: vec![],
+            output_data: vec![],
+        },
+        }
+    }
+}

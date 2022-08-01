@@ -62,10 +62,13 @@ pub trait Backend: Copy + Clone + Send {
     fn commit(&self) -> BackendResult<()>;
     fn deduct_balance(&self, amount: IDNA) -> BackendResult<()>;
     fn add_balance(&self, to: Address, amount: IDNA) -> BackendResult<()>;
-    fn contract(&self) -> BackendResult<Address>;
+    fn own_addr(&self) -> BackendResult<Address>;
     fn contract_code(&self, contract: Address) -> BackendResult<Vec<u8>>;
     fn contract_addr(&self, code:  &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address>;
     fn deploy(&self, code : &[u8], args: &[u8], nonce: &[u8], amount: &[u8], gas_limit: u64) -> BackendResult<ActionResult>;
+    fn contract_addr_by_hash(&self, hash:  &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address>;
+    fn own_code(&self) -> BackendResult<Vec<u8>>;
+    fn code_hash(&self) -> BackendResult<Vec<u8>>;
 }
 
 pub struct MockBackend {}
@@ -191,7 +194,7 @@ impl Backend for MockBackend {
         todo!()
     }
 
-    fn contract(&self) -> BackendResult<Address> {
+    fn own_addr(&self) -> BackendResult<Address> {
         todo!()
     }
 
@@ -204,6 +207,18 @@ impl Backend for MockBackend {
     }
 
     fn deploy(&self, code: &[u8], args: &[u8], nonce: &[u8], amount: &[u8], gas_limit: u64) -> BackendResult<ActionResult> {
+        todo!()
+    }
+
+    fn contract_addr_by_hash(&self, hash: &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address> {
+        todo!()
+    }
+
+    fn own_code(&self) -> BackendResult<Vec<u8>> {
+        todo!()
+    }
+
+    fn code_hash(&self) -> BackendResult<Vec<u8>> {
         todo!()
     }
 }

@@ -11,6 +11,10 @@
 
 #define BASE_PROMISE_COST 1000
 
+#define BASE_DEPLOY_COST 30000
+
+#define BASE_CALL_COST 3000
+
 #define ACTION_FUNCTION_CALL 1
 
 #define ACTION_TRANSFER 2
@@ -106,6 +110,9 @@ typedef struct GoApi_vtable {
   int32_t (*call)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t, uint64_t*, struct UnmanagedVector*);
   int32_t (*deploy)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t, uint64_t*, struct UnmanagedVector*);
   int32_t (*contract_addr)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*contract_addr_by_hash)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*own_code)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*code_hash)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {

@@ -98,7 +98,14 @@ func execute(api *GoAPI, code []byte, method []byte, args []byte, invocationCont
 		}
 		return protoModel.GasUsed, actionResultBytes, errors.New(protoModel.Error)
 	}
-	return uint64(gasUsed), []byte{}, errorWithMessage(int(errno), errmsg)
+	err := errorWithMessage(int(errno), errmsg)
+	actionResultBytes, _ := proto.Marshal(&models.ActionResult{
+		Success:      false,
+		Error:        err.Error(),
+		GasUsed:      uint64(gasUsed),
+		RemainingGas: gasLimit - uint64(gasUsed),
+	})
+	return uint64(gasUsed), actionResultBytes, err
 }
 
 func deploy(api *GoAPI, code []byte, args []byte, gasLimit uint64) (uint64, []byte, error) {
@@ -119,7 +126,14 @@ func deploy(api *GoAPI, code []byte, args []byte, gasLimit uint64) (uint64, []by
 		}
 		return protoModel.GasUsed, actionResultBytes, errors.New(protoModel.Error)
 	}
-	return uint64(gasUsed), []byte{}, errorWithMessage(int(errno), errmsg)
+	err := errorWithMessage(int(errno), errmsg)
+	actionResultBytes, _ := proto.Marshal(&models.ActionResult{
+		Success:      false,
+		Error:        err.Error(),
+		GasUsed:      uint64(gasUsed),
+		RemainingGas: gasLimit - uint64(gasUsed),
+	})
+	return uint64(gasUsed), actionResultBytes, errorWithMessage(int(errno), errmsg)
 }
 
 func PackArguments(args [][]byte) []byte {

@@ -201,6 +201,24 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut UnmanagedVector, // addr
     ) -> i32,
+    pub contract_addr_by_hash : extern "C" fn(
+        *const api_t,
+        U8SliceView, // hash
+        U8SliceView, // args,
+        U8SliceView, // nonce,
+        *mut u64,
+        *mut UnmanagedVector, // addr
+    ) -> i32,
+    pub own_code: extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
+    pub code_hash: extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut UnmanagedVector, // result
+    ) -> i32,
 }
 
 #[repr(C)]
@@ -656,7 +674,7 @@ impl Backend for apiWrapper {
         (Ok(()), used_gas)
     }
 
-    fn contract(&self) -> BackendResult<Address> {
+    fn own_addr(&self) -> BackendResult<Address> {
         let mut used_gas = 0_u64;
         let mut data = UnmanagedVector::default();
         let go_result = (self.api.vtable.contract)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
@@ -717,6 +735,42 @@ impl Backend for apiWrapper {
         };
         (Ok(res.into()), used_gas)
     }
+
+    fn contract_addr_by_hash(&self, hash: &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.contract_addr_by_hash)(self.api.state, U8SliceView::new(Some(&hash)), U8SliceView::new(Some(&args)), U8SliceView::new(Some(&nonce)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        check_go_result!(go_result, used_gas,"backend error in contract_addr_by_hash");
+        let d = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(d), used_gas)
+    }
+
+    fn own_code(&self) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.own_code)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        check_go_result!(go_result, used_gas,"backend error in own_code");
+        let d = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(d), used_gas)
+    }
+
+    fn code_hash(&self) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.code_hash)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        check_go_result!(go_result, used_gas,"backend error in code_hash");
+        let d = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(d), used_gas)
+    }
 }
 
 unsafe impl Send for apiWrapper {}
@@ -742,7 +796,6 @@ fn do_execute(api: GoApi, code: ByteSliceView,
     }
 
     let args = convert_args(arguments_bytes)?;
-
     println!("execute code: code len={}, method={}, args={:?}, gas limit={}", data.len(), method, args, gas_limit);
 
     let mut ctx = InvocationContext::default();
@@ -752,7 +805,7 @@ fn do_execute(api: GoApi, code: ByteSliceView,
         ctx = proto::models::InvocationContext::parse_from_bytes(ctx_bytes).unwrap_or_default().into()
     }
 
-    VmRunner::execute(apiWrapper::new(api), data, &method, args, gas_limit, gas_used, ctx)
+    Ok(VmRunner::execute(apiWrapper::new(api), data, &method, arguments_bytes, gas_limit, gas_used, ctx))
 }
 
 
@@ -772,7 +825,7 @@ fn do_deploy(api: GoApi, code: ByteSliceView,
 
     println!("deploy code: code len={}, args={:?}, gas limit={}", data.len(), args, gas_limit);
 
-    VmRunner::deploy(apiWrapper::new(api), data, arguments_bytes, gas_limit, gas_used)
+    Ok(VmRunner::deploy(apiWrapper::new(api), data, arguments_bytes, gas_limit, gas_used))
 }
 
 
