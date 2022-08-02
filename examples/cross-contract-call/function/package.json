@@ -23,6 +23,6 @@
     }
   },
   "dependencies": {
-    "asi": "file:../../idena-sdk-as"
+    "asi": "file:../../../../idena-sdk-as"
   }
 }

@@ -1,46 +1,24 @@
 import {Address} from "asi/assembly/address";
 import {KeyValue} from "asi/assembly/keyValue";
-import {Region} from "asi/assembly/region";
 import {util} from "asi/assembly/utils";
 import {env} from "asi/assembly/env";
-import {Bytes} from "asi/assembly/bytes";
 import {debug} from "asi/assembly/debug";
+import {decodeAddress, encodeAddress, encodeString} from "asi/assembly/bytes";
+import {allocate} from "asi/assembly/allocate";
 
-var contractAddr = new KeyValue<Address>("contract")
+var contractAddr = new KeyValue<string, Address>("contract", encodeString, encodeAddress, decodeAddress)
 
-
-function ptrToBytes(ptr: i32): Bytes {
-    let region = changetype<Region>(ptr);
-    return Bytes.fromBytes(region.read())
-}
-
-function bytesToPtr(data: Bytes): usize {
-    let r = new Region(data)
-    return changetype<usize>(r)
-}
-
-function strToPtr(data: string): usize {
-    let r = new Region(util.stringToBytes(data))
-    return changetype<usize>(r)
-}
+export {allocate} from "asi/assembly/allocate";
 
 export function deploy(functionAddr: i32): void {
-    let addr = Address.fromBytes(ptrToBytes(functionAddr));
+    let addr = Address.fromBytes(util.ptrToBytes(functionAddr));
 
     debug(`deploy arg = ${addr}`)
     contractAddr.set(addr)
 }
 
-export function allocate(size: usize): i32 {
-    let data = new Uint8Array(size);
-    let r = new Region(data);
-    let result = changetype<usize>(r);
-    debug(`allocate:${size} , ptr=${result}`);
-    return result;
-}
-
 export function _sum(y: i32): void {
-    let yValue = ptrToBytes(y).toU64()
+    let yValue = util.ptrToBytes(y).toU64()
 
     let xPtr = allocate(8)
 
@@ -48,42 +26,42 @@ export function _sum(y: i32): void {
 
     util.assert(promiseResult == 2, "promise result should be successful")
 
-    let xValue = ptrToBytes(xPtr).toU64()
+    let xValue = util.ptrToBytes(xPtr).toU64()
 
     debug(`x=${xValue}, y=${yValue}, sum=${xValue + yValue}`)
 }
 
 export function invoke(x: i32, y: i32): void {
-    let addr = contractAddr.get(null, a => Address.fromBytes(a));
+    let addr = contractAddr.get(new Address(0));
     util.assert(addr != null && addr.length > 0, "contract should be specified")
 
-    let xValue = ptrToBytes(x).toU64()
-    let yValue = ptrToBytes(y).toU64()
+    let xValue = util.ptrToBytes(x).toU64()
+    let yValue = util.ptrToBytes(y).toU64()
 
     debug(`x=${xValue}, y=${yValue}`)
 
     if (addr != null) {
         debug(`contract addr = ${addr.toHex()}`)
 
-        let methodPtr = strToPtr("inc")
+        let methodPtr = util.strToPtr("inc")
         debug(`methodPtr = ${methodPtr}`)
 
-        let contractPtr = bytesToPtr(addr.toBytes())
+        let contractPtr = util.bytesToPtr(addr.toBytes())
         debug(`contractPtr = ${contractPtr}`)
 
-        let argsPrt = bytesToPtr(util.packPlainArgument(ptrToBytes(x)))
+        let argsPrt = util.bytesToPtr(util.packPlainArgument(util.ptrToBytes(x)))
         debug(`argsPrt = ${argsPrt}`)
 
         let promiseIdx = env.createCallFunctionPromise(contractPtr, methodPtr, argsPrt, 0, 100000)
 
         debug(`created promise=${promiseIdx}`)
 
-        let sumMethodPtr = strToPtr("_sum")
+        let sumMethodPtr = util.strToPtr("_sum")
 
         debug(`sum methodPtr = ${sumMethodPtr}`)
 
         // let sumArgPtr = bytesToPtr(util.packPlainArgument(ptrToBytes(y)))
-        let sumArgPtr = bytesToPtr(util.packProtobufArgument([ptrToBytes(y)]))
+        let sumArgPtr = util.bytesToPtr(util.packProtobufArgument([util.ptrToBytes(y)]))
 
         debug(`sum arg ptr  = ${sumArgPtr}`)
 
