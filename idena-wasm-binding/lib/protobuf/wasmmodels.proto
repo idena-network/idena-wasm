@@ -3,7 +3,7 @@
 syntax = "proto3";
 package models;
 
-message ProtoCallContractArgs {
+message ProtoArgs {
   repeated bytes args = 1;
 }
 
@@ -24,3 +24,17 @@ message ActionResult {
   bytes output_data = 6;
   repeated ActionResult sub_action_results = 7;
 }
+
+message ProtoReadShardedDataRequest {
+  uint32 type = 1;
+  bytes req = 2;
+
+  message ReadContractDataRequest {
+    bytes key = 1;
+  }
+
+  message ReadIdentity {
+    bytes addr = 1;
+  }
+}
+

@@ -41,6 +41,8 @@ type HostEnv interface {
 	ContractAddrByHash(meter *GasMeter, hash []byte, args []byte, nonce []byte) Address
 	OwnCode(meter *GasMeter) []byte
 	CodeHash(meter *GasMeter) []byte
+	Event(meter *GasMeter, name string, args ...[]byte)
+	ReadContractData(meter *GasMeter, address Address, key []byte) []byte
 }
 
 type GasMeter struct {

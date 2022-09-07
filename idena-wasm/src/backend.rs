@@ -50,7 +50,7 @@ pub trait Backend: Copy + Clone + Send {
     fn identity_state(&self, addr: Address) -> BackendResult<u8>;
     fn pub_key(&self, addr: Address) -> BackendResult<Vec<u8>>;
     fn burn_all(&self) -> BackendResult<()>;
-    fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Vec<u8>>;
+    fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Option<Vec<u8>>>;
     fn epoch(&self) -> BackendResult<u16>;
     fn contract_stake(&self, addr: Address) -> BackendResult<IDNA>;
     fn move_to_stake(&self, amount: IDNA) -> BackendResult<()>;
@@ -69,6 +69,8 @@ pub trait Backend: Copy + Clone + Send {
     fn contract_addr_by_hash(&self, hash:  &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address>;
     fn own_code(&self) -> BackendResult<Vec<u8>>;
     fn code_hash(&self) -> BackendResult<Vec<u8>>;
+    fn read_sharded_data(&self, addr: Address, req : &[u8]) -> BackendResult<ActionResult>;
+    fn event(&self, event_name : &[u8], args : &[u8]) -> BackendResult<()>;
 }
 
 pub struct MockBackend {}
@@ -146,7 +148,7 @@ impl Backend for MockBackend {
         todo!()
     }
 
-    fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Vec<u8>> {
+    fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Option<Vec<u8>>> {
         todo!()
     }
 
@@ -219,6 +221,14 @@ impl Backend for MockBackend {
     }
 
     fn code_hash(&self) -> BackendResult<Vec<u8>> {
+        todo!()
+    }
+
+    fn read_sharded_data(&self, addr: Address, req: &[u8]) -> BackendResult<ActionResult> {
+        todo!()
+    }
+
+    fn event(&self, event_name: &[u8], args: &[u8]) -> BackendResult<()> {
         todo!()
     }
 }

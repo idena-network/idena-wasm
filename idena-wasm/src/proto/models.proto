@@ -37,3 +37,16 @@ message InvocationContext {
   bool is_callback = 1;
   PromiseResult promise_result = 2;
 }
+
+message ProtoReadShardedDataRequest {
+  uint32 type = 1;
+  bytes req = 2;
+
+  message ReadContractDataRequest {
+    bytes key = 1;
+  }
+
+  message ReadIdentity {
+    bytes addr = 1;
+  }
+}

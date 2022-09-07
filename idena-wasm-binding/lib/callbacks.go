@@ -83,6 +83,8 @@ GoResult cown_code(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
 typedef GoResult (*code_hash_fn)(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
 GoResult ccode_hash(api_t *ptr, uint64_t *used_gas,  UnmanagedVector *result);
 
+typedef GoResult (*event_fn)(api_t *ptr, U8SliceView event_name, U8SliceView args,  uint64_t *used_gas);
+GoResult cevent_fn(api_t *ptr, U8SliceView event_name, U8SliceView args,  uint64_t *used_gas);
 
 */
 import "C"
@@ -582,5 +584,27 @@ func ccode_hash(ptr *C.api_t, gasUsed *cu64, result *C.UnmanagedVector) (ret C.G
 	*result = newUnmanagedVector(code)
 	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
 
+	return C.GoResult_Ok
+}
+
+//export cevent
+func cevent(ptr *C.api_t, eventName C.U8SliceView, args C.U8SliceView, gasUsed *cu64) (ret C.GoResult) {
+	api := (*GoAPI)(unsafe.Pointer(ptr))
+	defer recoverPanic(&ret, api, gasUsed)
+	gasBefore := api.gasMeter.GasConsumed()
+	api.host.Event(api.gasMeter, string(copyU8Slice(eventName)), UnpackArguments(copyU8Slice(args))...)
+	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
+	return C.GoResult_Ok
+}
+
+//export cread_contract_data
+func cread_contract_data(ptr *C.api_t, addr C.U8SliceView, key C.U8SliceView, gasUsed *cu64, result *C.UnmanagedVector) (ret C.GoResult) {
+	api := (*GoAPI)(unsafe.Pointer(ptr))
+	defer recoverPanic(&ret, api, gasUsed)
+	address := newAddress(copyU8Slice(addr))
+	gasBefore := api.gasMeter.GasConsumed()
+	value := api.host.ReadContractData(api.gasMeter, address, copyU8Slice(key))
+	*result = newUnmanagedVector(value)
+	*gasUsed = cu64(api.gasMeter.GasConsumed() - gasBefore)
 	return C.GoResult_Ok
 }

@@ -6,11 +6,12 @@ use protobuf::Message;
 use crate::{check_go_result, proto};
 use crate::args::convert_args;
 use crate::backend::{Backend, BackendError, BackendResult};
+use crate::costs::{BASE_CALL_COST, BASE_DEPLOY_COST};
 use crate::environment::Env;
 use crate::errors::VmError;
 use crate::memory::{ByteSliceView, VmResult};
 use crate::runner::VmRunner;
-use crate::types::{ActionResult, Address, IDNA, InvocationContext, PromiseResult};
+use crate::types::{Action, ActionResult, Address, IDNA, InvocationContext, PromiseResult};
 
 #[repr(C)]
 pub struct gas_meter_t {
@@ -99,13 +100,6 @@ pub struct GoApi_vtable {
     pub burn_all: extern "C" fn(
         *const api_t,
         *mut u64,
-    ) -> i32,
-    pub read_contract_data: extern "C" fn(
-        *const api_t,
-        U8SliceView, // addr
-        U8SliceView, // key
-        *mut u64,
-        *mut UnmanagedVector, // result
     ) -> i32,
     pub epoch: extern "C" fn(
         *const api_t,
@@ -201,7 +195,7 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut UnmanagedVector, // addr
     ) -> i32,
-    pub contract_addr_by_hash : extern "C" fn(
+    pub contract_addr_by_hash: extern "C" fn(
         *const api_t,
         U8SliceView, // hash
         U8SliceView, // args,
@@ -218,6 +212,19 @@ pub struct GoApi_vtable {
         *const api_t,
         *mut u64,
         *mut UnmanagedVector, // result
+    ) -> i32,
+    pub event: extern "C" fn(
+        *const api_t,
+        U8SliceView, // event_name
+        U8SliceView, // args,
+        *mut u64,
+    ) -> i32,
+    pub read_contract_data : extern "C" fn(
+        *const api_t,
+        U8SliceView, // addr
+        U8SliceView, // key
+        *mut u64,
+        *mut UnmanagedVector, // data
     ) -> i32,
 }
 
@@ -512,18 +519,14 @@ impl Backend for apiWrapper {
         (Ok(()), used_gas)
     }
 
-    fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Vec<u8>> {
+    fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Option<Vec<u8>>> {
         let mut used_gas = 0_u64;
         let mut data = UnmanagedVector::default();
         let go_result = (self.api.vtable.read_contract_data)(self.api.state, U8SliceView::new(Some(&addr)), U8SliceView::new(Some(&key)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
         if go_result != 0 {
             return (Err(BackendError::new("backend error in read_contract_data")), used_gas);
         }
-        let d = match data.consume() {
-            Some(v) => v,
-            None => Vec::new()
-        };
-        (Ok(d), used_gas)
+        (Ok(data.consume()), used_gas)
     }
 
     fn epoch(&self) -> BackendResult<u16> {
@@ -771,6 +774,17 @@ impl Backend for apiWrapper {
         };
         (Ok(d), used_gas)
     }
+
+    fn read_sharded_data(&self, addr: Address, req: &[u8]) -> BackendResult<ActionResult> {
+        todo!()
+    }
+
+    fn event(&self, event_name: &[u8], args: &[u8]) -> BackendResult<()> {
+        let mut used_gas = 0_u64;
+        let go_result = (self.api.vtable.event)(self.api.state,U8SliceView::new(Some(&event_name)), U8SliceView::new(Some(&args)),  &mut used_gas as *mut u64);
+        check_go_result!(go_result, used_gas,"backend error in emit event");
+        (Ok(()), used_gas)
+    }
 }
 
 unsafe impl Send for apiWrapper {}
@@ -783,19 +797,30 @@ fn do_execute(api: GoApi, code: ByteSliceView,
               args: ByteSliceView,
               invocation_context: ByteSliceView,
               gas_limit: u64,
-              gas_used: &mut u64) -> VmResult<ActionResult> {
-    let data: Vec<u8> = code.read().ok_or_else(|| VmError::custom("code is required"))?.into();
+              gas_used: &mut u64) -> ActionResult {
+    *gas_used = BASE_CALL_COST;
+
+    let data: Vec<u8> = match code.read() {
+        Some(v) => v.to_vec(),
+        None => return action_result_from_err(VmError::custom("code is required"), gas_limit, *gas_used)
+    };
     let arguments_bytes = args.read().unwrap_or(&[]);
 
-    let method_bytes: Vec<u8> = method_name.read().ok_or_else(|| VmError::custom("method is required"))?.into();
+    let method_bytes: Vec<u8> = match method_name.read() {
+        Some(v) => v.into(),
+        None => return action_result_from_err(VmError::custom("method is required"), gas_limit, *gas_used)
+    };
+
     let method = String::from_utf8_lossy(&method_bytes).to_string();
 
-
     if arguments_bytes.len() == 0 {
-        return Err(VmError::custom("invalid arguments"));
+        return action_result_from_err(VmError::custom("invalid arguments format"), gas_limit, *gas_used);
     }
 
-    let args = convert_args(arguments_bytes)?;
+    let args = match convert_args(arguments_bytes) {
+        Ok(a) => a,
+        Err(err) => return action_result_from_err(err, gas_limit, *gas_used),
+    };
     println!("execute code: code len={}, method={}, args={:?}, gas limit={}", data.len(), method, args, gas_limit);
 
     let mut ctx = InvocationContext::default();
@@ -805,27 +830,43 @@ fn do_execute(api: GoApi, code: ByteSliceView,
         ctx = proto::models::InvocationContext::parse_from_bytes(ctx_bytes).unwrap_or_default().into()
     }
 
-    Ok(VmRunner::execute(apiWrapper::new(api), data, &method, arguments_bytes, gas_limit, gas_used, ctx))
+    VmRunner::execute(apiWrapper::new(api), data, &method, arguments_bytes, gas_limit, gas_used, ctx)
+}
+
+fn action_result_from_err(err: VmError, gas_limit: u64, gas_used: u64) -> ActionResult {
+    ActionResult {
+        error: err.to_string(),
+        success: false,
+        gas_used: gas_used,
+        remaining_gas: gas_limit.saturating_sub(gas_used),
+        input_action: Action::None,
+        sub_action_results: vec![],
+        output_data: vec![],
+    }
 }
 
 
 fn do_deploy(api: GoApi, code: ByteSliceView,
              args: ByteSliceView,
              gas_limit: u64,
-             gas_used: &mut u64) -> VmResult<ActionResult> {
-    let data: Vec<u8> = code.read().ok_or_else(|| VmError::custom("code is required"))?.into();
+             gas_used: &mut u64) -> ActionResult {
+    *gas_used = BASE_DEPLOY_COST;
+    let data: Vec<u8> = match code.read() {
+        Some(v) => v.to_vec(),
+        None => return action_result_from_err(VmError::custom("code is required"), gas_limit, *gas_used)
+    };
     let arguments_bytes = args.read().unwrap_or(&[]);
 
     if arguments_bytes.len() == 0 {
-        return Err(VmError::custom("invalid arguments"));
+        return action_result_from_err(VmError::custom("invalid arguments"), gas_limit, *gas_used);
     }
 
-
-    let args = convert_args(arguments_bytes)?;
-
+    let args = match convert_args(arguments_bytes) {
+        Ok(a) => a,
+        Err(err) => return action_result_from_err(err, gas_limit, *gas_used),
+    };
     println!("deploy code: code len={}, args={:?}, gas limit={}", data.len(), args, gas_limit);
-
-    Ok(VmRunner::deploy(apiWrapper::new(api), data, arguments_bytes, gas_limit, gas_used))
+    VmRunner::deploy(apiWrapper::new(api), data, arguments_bytes, gas_limit, gas_used)
 }
 
 
@@ -838,32 +879,10 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
                           gas_used: &mut u64,
                           action_result: &mut UnmanagedVector,
                           err_msg: Option<&mut UnmanagedVector>) -> u8 {
-    match do_execute(api, code, method_name, args, invocation_context, gas_limit, gas_used) {
-        Ok(res) => {
-            let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
-            *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
-            0
-        }
-        Err(err) => {
-            if let Some(err_msg) = err_msg {
-                if err_msg.is_some() {
-                    panic!(
-                        "There is an old error message in the given pointer that has not been \
-                cleaned up. Error message pointers should not be reused for multiple calls."
-                    )
-                }
-                *err_msg = UnmanagedVector::new(Some(err.to_string().into()));
-            } else {
-                // The caller provided a nil pointer for the error message.
-                // That's not nice but we can live with it.
-            }
-            match err {
-                VmError::Custom { .. } => 1,
-                VmError::OutOfGas => 2,
-                VmError::WasmExecutionErr { .. } => 3
-            }
-        }
-    }
+    let res = do_execute(api, code, method_name, args, invocation_context, gas_limit, gas_used);
+    let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
+    *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
+    0
 }
 
 
@@ -874,30 +893,8 @@ pub extern "C" fn deploy(api: GoApi, code: ByteSliceView,
                          gas_used: &mut u64,
                          action_result: &mut UnmanagedVector,
                          err_msg: Option<&mut UnmanagedVector>) -> u8 {
-    match do_deploy(api, code, args, gas_limit, gas_used) {
-        Ok(res) => {
-            let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
-            *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
-            0
-        }
-        Err(err) => {
-            if let Some(err_msg) = err_msg {
-                if err_msg.is_some() {
-                    panic!(
-                        "There is an old error message in the given pointer that has not been \
-                cleaned up. Error message pointers should not be reused for multiple calls."
-                    )
-                }
-                *err_msg = UnmanagedVector::new(Some(err.to_string().into()));
-            } else {
-                // The caller provided a nil pointer for the error message.
-                // That's not nice but we can live with it.
-            }
-            match err {
-                VmError::Custom { .. } => 1,
-                VmError::OutOfGas => 2,
-                VmError::WasmExecutionErr { .. } => 3
-            }
-        }
-    }
+    let res = do_deploy(api, code, args, gas_limit, gas_used);
+    let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
+    *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
+    0
 }

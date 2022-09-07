@@ -3,7 +3,7 @@ use std::fmt::{Debug, Formatter};
 use std::slice;
 
 use wasmer::{Array, ValueType, WasmPtr};
-
+use byteorder::ByteOrder;
 use crate::errors::VmError;
 
 #[repr(C)]
@@ -44,7 +44,7 @@ pub fn read_region(memory: &wasmer::Memory, ptr: u32, max_length: usize) -> VmRe
 
     if region.length > to_u32(max_length)? {
         return Err(
-            VmError::custom(format!("region_length_too_big: ptr={} expected max = {}, actual={}",ptr, max_length, region.length))
+            VmError::custom(format!("region_length_too_big: ptr={} expected max = {}, actual={}", ptr, max_length, region.length))
         );
     }
 
@@ -124,6 +124,55 @@ fn get_region(memory: &wasmer::Memory, ptr: u32) -> CommunicationResult<Region> 
         None => Err(VmError::custom("Could not dereference this pointer to a Region"))
     }
 }
+
+pub fn read_u32(memory: &wasmer::Memory, ptr: u32) -> CommunicationResult<u32> {
+    let wptr: WasmPtr<u32> = WasmPtr::<u32>::new(ptr);
+    match wptr.deref(memory) {
+        Some(cell) => {
+            Ok(cell.get())
+        }
+        None => Err(VmError::custom("Could not dereference this pointer to u32"))
+    }
+}
+
+fn get_utf18_string(ptr: WasmPtr<u8, Array>, memory: &wasmer::Memory, str_len: u32) -> Option<String> {
+    let memory_size = memory.size().bytes().0;
+    if ptr.offset() as usize + str_len as usize > memory.size().bytes().0
+        || ptr.offset() as usize >= memory_size
+    {
+        return None;
+    }
+
+    // TODO: benchmark the internals of this function: there is likely room for
+    // micro-optimization here and this may be a fairly common function in user code.
+    let view = memory.view::<u8>();
+
+    let base = ptr.offset() as usize;
+
+    let mut vec: Vec<u8> = Vec::with_capacity(str_len as usize);
+    let base = ptr.offset() as usize;
+    for i in 0..(str_len as usize) {
+        let byte = view[base + i].get();
+        vec.push(byte);
+    }
+
+    let mut u16_buffer = vec![0u16; str_len as usize / 2];
+    byteorder::LittleEndian::read_u16_into(&vec, &mut u16_buffer);
+
+    String::from_utf16(&u16_buffer).ok()
+}
+
+pub fn read_utf16_string(memory: &wasmer::Memory, ptr: u32, len: u32) -> CommunicationResult<String> {
+    let wptr: WasmPtr<u8, Array> = WasmPtr::<u8, Array>::new(ptr);
+
+    match get_utf18_string(wptr, &memory, len) {
+        Some(v) => {
+            Ok(v)
+        }
+        None => Err(VmError::custom("Could not dereference this pointer to [u8]"))
+    }
+}
+
 
 /// Performs plausibility checks in the given Region. Regions are always created by the
 /// contract and this can be used to detect problems in the standard library of the contract.

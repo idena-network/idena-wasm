@@ -16,6 +16,7 @@ pub enum Action {
     None,
     DeployContract(DeployContractAction),
     FunctionCall(FunctionCallAction),
+    ReadShardedData(ReadShardedDataAction),
     Transfer(TransferAction),
 }
 
@@ -40,6 +41,26 @@ pub struct DeployContractAction {
 pub struct TransferAction {
     pub amount: IDNA,
 }
+
+#[derive(Clone, Debug)]
+pub struct ReadContractDataAction {
+    pub gas_limit : u64,
+    pub key : Vec<u8>
+}
+
+#[derive(Clone, Debug)]
+pub struct GetIdentityAction {
+    pub gas_limit : u64,
+    pub addr : Vec<u8>
+}
+
+#[derive(Clone, Debug)]
+pub enum ReadShardedDataAction {
+    ReadContractData(ReadContractDataAction),
+    GetIdentity(GetIdentityAction)
+}
+
+
 
 /*pub struct OutputData {
     pub data_id: Hash,

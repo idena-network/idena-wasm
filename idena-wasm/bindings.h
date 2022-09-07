@@ -94,7 +94,6 @@ typedef struct GoApi_vtable {
   int32_t (*identity_state)(const struct api_t*, struct U8SliceView, uint64_t*, uint8_t*);
   int32_t (*pub_key)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*burn_all)(const struct api_t*, uint64_t*);
-  int32_t (*read_contract_data)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*epoch)(const struct api_t*, uint64_t*, uint16_t*);
   int32_t (*contract_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*move_to_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
@@ -113,6 +112,8 @@ typedef struct GoApi_vtable {
   int32_t (*contract_addr_by_hash)(const struct api_t*, struct U8SliceView, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*own_code)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*code_hash)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*event)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*);
+  int32_t (*read_contract_data)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {

@@ -5,8 +5,8 @@ use crate::backend::Backend;
 use crate::environment::Env;
 use crate::errors::VmError;
 use crate::exports::gas_meter_t;
-use crate::memory::{read_region, ref_to_u32, to_u32, VmResult, write_region};
-use crate::types::{ActionResult, PromiseResult};
+use crate::memory::{read_region, read_u32, read_utf16_string, ref_to_u32, to_u32, VmResult, write_region};
+use crate::types::{ActionResult, GetIdentityAction, PromiseResult, ReadContractDataAction, ReadShardedDataAction};
 use crate::unwrap_or_return;
 
 const MAX_STORAGE_KEY_SIZE: usize = 32;
@@ -207,6 +207,23 @@ pub fn identity<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u32> {
     };
     write_to_contract(env, &out_data)
 }
+
+pub fn event<B: Backend>(env: &Env<B>, event_name: u32, args: u32) -> VmResult<()> {
+    let event_name = read_region(&env.memory(), event_name, 1024)?;
+
+    let args = if args > 0 { read_region(&env.memory(), args, 1024)? } else { vec![] };
+
+    let gas_left = env.get_gas_left();
+
+    env.backend.set_remaining_gas(gas_left);
+
+    let (result, gas) = env.backend.event(&event_name, &args);
+
+    process_gas_info(env, gas)?;
+    result?;
+    Ok(())
+}
+
 /*
 pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
     let to = read_region(&env.memory(), to, MAX_ADDRESS_SIZE)?;
@@ -264,8 +281,18 @@ pub fn debug<B: Backend>(env: &Env<B>, ptr: u32) -> VmResult<()> {
     Ok(())
 }
 
-pub fn abort<B: Backend>(env: &Env<B>, msg: u32, filePtr: u32, line: u32, col: u32) {
-    println!("called abort fn {} {} {} {}", msg, filePtr, line, col);
+pub fn abort<B: Backend>(env: &Env<B>, msg: u32, filePtr: u32, line: u32, col: u32) -> VmResult<()> {
+    if msg >= 4 && filePtr >= 4 {
+        let mem = env.memory();
+        let msg_len = read_u32(&mem, (msg - 4) as u32);
+        let file_len = read_u32(&mem, (filePtr - 4) as u32);
+        let str = read_utf16_string(&mem, msg, msg_len?)?;
+        let file = read_utf16_string(&mem, filePtr, file_len?)?;
+        let message = format!("{}, filename: \"{}\" line: {} col: {}", str, file, line, col);
+        println!("called abort fn: {} ", message);
+        return Err(VmError::wasm_err(message));
+    }
+    Ok(())
 }
 
 pub fn panic<B: Backend>(env: &Env<B>, msg: u32) -> VmResult<()> {
@@ -430,6 +457,33 @@ pub fn code_hash<B: Backend>(env: &Env<B>) -> VmResult<u32> {
         Err(err) => return Err(err.into())
     };
     write_to_contract(env, &hash)
+}
+
+pub fn create_read_contract_data_promise<B: Backend>(env: &Env<B>, addr: u32, key: u32, gas_limit: u32) -> VmResult<u32> {
+    let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
+    let key = read_region(&env.memory(), key, 1024)?;
+
+    let idx_res = env.create_read_sharded_data_promise(to, ReadShardedDataAction::ReadContractData(ReadContractDataAction {
+        key,
+        gas_limit: gas_limit as u64,
+    }));
+    let idx = idx_res.0?;
+    process_gas_info(env, gas_limit as u64)?;
+    process_gas_info(env, idx_res.1)?;
+    Ok(idx)
+}
+
+pub fn create_get_identity_promise<B: Backend>(env: &Env<B>, addr: u32, gas_limit: u32) -> VmResult<u32> {
+    let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
+
+    let idx_res = env.create_read_sharded_data_promise(to.clone(), ReadShardedDataAction::GetIdentity(GetIdentityAction {
+        addr: to,
+        gas_limit: gas_limit as u64,
+    }));
+    let idx = idx_res.0?;
+    process_gas_info(env, gas_limit as u64)?;
+    process_gas_info(env, idx_res.1)?;
+    Ok(idx)
 }
 
 

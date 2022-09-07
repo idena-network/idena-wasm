@@ -12,7 +12,7 @@ use crate::costs::BASE_PROMISE_COST;
 use crate::errors::VmError;
 use crate::imports::{process_gas_info, write_to_contract};
 use crate::memory::VmResult;
-use crate::types::{Address, DeployContractAction, IDNA};
+use crate::types::{Address, DeployContractAction, IDNA, ReadShardedDataAction};
 use crate::types::{Action, FunctionCallAction, Promise, PromiseResult, TransferAction};
 
 #[derive(Debug)]
@@ -172,6 +172,7 @@ impl<B: Backend> Env<B> {
         })
     }
 
+
     pub fn create_deploy_contract_promise(&self, code: Vec<u8>, args: Vec<u8>, nonce: Vec<u8>, amount: IDNA, gas_limit: u64) -> BackendResult<u32> {
         let (own_addr_res, mut gas_used) = self.backend.own_addr();
         let own_addr = unwrap_or_return!(own_addr_res, gas_used);
@@ -191,6 +192,21 @@ impl<B: Backend> Env<B> {
                     args,
                     deposit: amount,
                 }),
+                action_callback: None,
+            });
+            (Ok(data.pending_promises.len() as u32 - 1), gas_used.saturating_add(BASE_PROMISE_COST))
+        })
+    }
+
+
+    pub fn create_read_sharded_data_promise(&self, to: Address, action: ReadShardedDataAction) -> BackendResult<u32> {
+        let (own_addr_res, gas_used) = self.backend.own_addr();
+        let own_addr = unwrap_or_return!(own_addr_res, gas_used);
+        self.with_context_data_mut(|data| {
+            data.pending_promises.push(Promise {
+                predecessor_id: own_addr,
+                receiver_id: to,
+                action: Action::ReadShardedData(action),
                 action_callback: None,
             });
             (Ok(data.pending_promises.len() as u32 - 1), gas_used.saturating_add(BASE_PROMISE_COST))

@@ -391,6 +391,7 @@ name = "idena-wasm"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "byteorder",
  "errno",
  "indexmap",
  "loupe",
