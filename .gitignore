@@ -1,3 +1,4 @@
-/idena-wasm/target
+target
 node_modules/
 build/
+/.idea
