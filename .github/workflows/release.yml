@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - '*'
+defaults:
+  run:
+    shell: bash
 jobs:
   release:
     env:
