@@ -17,9 +17,16 @@ jobs:
         os: [ macos-latest, ubuntu-latest, windows-latest ]
     steps:
       - uses: actions/checkout@v3
+
       - uses: actions-rs/toolchain@v1
+        if: matrix.os != 'windows-latest'
         with:
           toolchain: stable
+
+      - uses: actions-rs/toolchain@v1
+        if: matrix.os == 'windows-latest'
+        with:
+          toolchain: stable-x86_64-pc-windows-gnu
 
       - uses: actions-rs/cargo@v1
         if: matrix.os == 'windows-latest'
