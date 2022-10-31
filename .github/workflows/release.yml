@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - v*
+      - '*'
 jobs:
   release:
     env:
@@ -23,7 +23,7 @@ jobs:
           args: --release --all-features
 
       - uses: actions/upload-artifact@v2
-          with:
-            name: ${{ matrix.target }}-${{ env.BINARY_NAME }}
-            path: target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}*
+        with:
+          name: ${{ matrix.target }}-${{ env.BINARY_NAME }}
+          path: target/${{ matrix.target }}/release/${{ env.BINARY_NAME }}*
 
