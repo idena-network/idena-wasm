@@ -21,14 +21,14 @@ use crate::gatekeeper::*;
 use crate::imports::*;
 use crate::limiting_tunables::LimitingTunables;
 use crate::memory::{read_region, VmResult};
-use crate::proto::models::InvocationContext as protoContext;
+use crate::proto::models::{InvocationContext as protoContext, ProtoArgs_Argument};
 use crate::types::{Action, ActionResult, Address, DeployContractAction, FunctionCallAction, InvocationContext, Promise, PromiseResult, ReadContractDataAction, ReadShardedDataAction};
 use crate::types::PromiseResult::Failed;
 
 pub struct VmRunner {}
 
 impl VmRunner {
-    fn prepare_arguments<B: Backend + 'static>(env: &Env<B>, info: &ModuleInfo, method: &String, args: protobuf::RepeatedField<Vec<u8>>) -> VmResult<Vec<Val>> {
+    fn prepare_arguments<B: Backend + 'static>(env: &Env<B>, info: &ModuleInfo, method: &String, args: protobuf::RepeatedField<ProtoArgs_Argument>) -> VmResult<Vec<Val>> {
         let mut params_cnt = 0;
 
         let exp_it: Iter<'_, String, ExportIndex> = info.exports.iter();
@@ -54,11 +54,11 @@ impl VmRunner {
 
         let mut wasm_args = Vec::new();
         for v in args.iter() {
-            if v.is_empty() {
+            if v.get_is_nil() {
                 wasm_args.push(Value::I32(0));
                 continue;
             }
-            match write_to_contract(&env.clone(), v) {
+            match write_to_contract(&env.clone(), v.get_value()) {
                 Ok(p) => wasm_args.push(Value::I32(i32::try_from(p).unwrap())),
                 Err(err) => return Err(err)
             }

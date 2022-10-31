@@ -3,8 +3,13 @@
 syntax = "proto3";
 package models;
 
-message ProtoCallContractArgs {
-  repeated bytes args = 1;
+message ProtoArgs {
+  repeated Argument args = 1;
+
+  message Argument {
+    bytes value = 1;
+    bool is_nil = 2;
+  }
 }
 
 message Action {

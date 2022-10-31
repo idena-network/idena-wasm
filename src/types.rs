@@ -209,7 +209,7 @@ impl From<protoAction> for Action {
                 addr: action.key,
                 gas_limit: action.gas_limit,
             })),
-            _ => { unreachable!() }
+            _ => Action::None
         }
     }
 }
