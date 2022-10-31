@@ -54,14 +54,14 @@ jobs:
       - name: Rename output file
         if: matrix.os == 'ubuntu-latest'
         run: |
-          asset_name="target/release/libidena_wasm_linux-${tag}.a"
+          asset_name="target/release/libidena_wasm_linux-${GIT_TAG}.a"
           mv target/release/${BINARY_NAME} ${asset_name}
           echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
 
       - name: Rename output file
         if: matrix.os == 'windows-latest'
         run: |
-          asset_name="target/release/libidena_wasm_win-${tag}.a"
+          asset_name="target/release/libidena_wasm_win-${GIT_TAG}.a"
           ls target/release
           mv target/release/${BINARY_NAME} ${asset_name}
           echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
@@ -69,7 +69,7 @@ jobs:
       - name: Rename output file
         if: matrix.os == 'macos-latest'
         run: |
-          asset_name="target/release/libidena_wasm_mac-${tag}.a"
+          asset_name="target/release/libidena_wasm_mac-${GIT_TAG}.a"
           mv target/release/${BINARY_NAME} ${asset_name}
           echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
 
