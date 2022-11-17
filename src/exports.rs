@@ -682,9 +682,7 @@ impl Backend for apiWrapper {
         let mut used_gas = 0_u64;
         let mut data = UnmanagedVector::default();
         let go_result = (self.api.vtable.contract)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
-        if go_result != 0 {
-            return (Err(BackendError::new("backend error in contract")), used_gas);
-        }
+        check_go_result!(go_result, used_gas, "backend error in own_addr");
         let d = match data.consume() {
             Some(v) => v,
             None => Vec::new()
@@ -851,6 +849,7 @@ fn action_result_from_err(err: VmError, gas_limit: u64, gas_used: u64) -> Action
         input_action: Action::None,
         sub_action_results: vec![],
         output_data: vec![],
+        contract: vec![],
     }
 }
 

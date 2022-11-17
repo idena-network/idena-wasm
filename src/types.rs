@@ -91,6 +91,7 @@ pub struct ActionResult {
     pub error: String,
     pub output_data: Vec<u8>,
     pub sub_action_results: Vec<ActionResult>,
+    pub contract: Address,
 }
 
 impl Into<protoActionResult> for &ActionResult {
@@ -102,6 +103,7 @@ impl Into<protoActionResult> for &ActionResult {
         proto.success = self.success;
         proto.error = self.error.clone();
         proto.remaining_gas = self.remaining_gas;
+        proto.contract = self.contract.clone();
         for sub_res in self.sub_action_results.iter() {
             proto.sub_action_results.push(sub_res.into());
         }
@@ -120,6 +122,7 @@ impl From<protoActionResult> for ActionResult {
             sub_action_results: action_res.sub_action_results.into_iter().map(|a| a.into()).collect(),
             error: action_res.error,
             output_data: action_res.output_data,
+            contract: action_res.contract,
         }
     }
 }
@@ -227,7 +230,7 @@ impl ActionResult {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum PromiseResult {
     Empty,
     Value(Vec<u8>),
@@ -251,6 +254,7 @@ pub struct InvocationContext {
 
 impl From<protoPromiseResult> for PromiseResult {
     fn from(promise_res: protoPromiseResult) -> Self {
+        println!("unmarshal protoPromiseResult {:?}", promise_res);
         if !promise_res.success {
             return PromiseResult::Failed;
         }
@@ -264,6 +268,7 @@ impl From<protoPromiseResult> for PromiseResult {
 impl Into<protoPromiseResult> for &PromiseResult {
     fn into(self) -> protoPromiseResult {
         let mut res = protoPromiseResult::default();
+        println!("marshal promise result {:?}", self);
         match self {
             PromiseResult::Empty => {
                 res.success = true
@@ -272,7 +277,9 @@ impl Into<protoPromiseResult> for &PromiseResult {
                 res.success = true;
                 res.set_data(val.clone());
             }
-            PromiseResult::Failed => {}
+            PromiseResult::Failed => {
+                res.success = false;
+            }
         };
         res
     }

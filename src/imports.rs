@@ -311,7 +311,7 @@ pub fn abort<B: Backend>(env: &Env<B>, msg: u32, filePtr: u32, line: u32, col: u
         println!("called abort fn: {} ", message);
         return Err(VmError::wasm_err(message));
     }
-    Ok(())
+    Err(VmError::custom("bad utf16 format"))
 }
 
 pub fn panic<B: Backend>(env: &Env<B>, msg: u32) -> VmResult<()> {

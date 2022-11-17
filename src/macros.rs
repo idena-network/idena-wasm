@@ -24,7 +24,7 @@ macro_rules! check_go_result {
 
 #[macro_export]
 macro_rules! unwrap_or_action_res {
-    ($e:expr, $input_action:expr, $gas_used:expr, $gas_limit:expr ) => {
+    ($e:expr, $input_action:expr, $gas_used:expr, $gas_limit:expr, $contract:expr ) => {
         match $e {
             Ok(x) => x,
             Err(err) => return ActionResult {
@@ -35,6 +35,7 @@ macro_rules! unwrap_or_action_res {
             input_action: $input_action,
             sub_action_results: vec![],
             output_data: vec![],
+            contract : $contract,
         },
         }
     }

@@ -31,6 +31,7 @@ message ActionResult {
   uint64 remaining_gas = 5;
   bytes output_data = 6;
   repeated ActionResult sub_action_results = 7;
+  bytes contract = 8;
 }
 
 
