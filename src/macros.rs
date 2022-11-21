@@ -12,11 +12,11 @@ macro_rules! unwrap_or_return {
 
 #[macro_export]
 macro_rules! check_go_result {
-    ($res:expr, $gas:expr, $msg:expr) => {
+    ($res:expr, $gas:expr, $method:expr) => {
         if $res != 0 {
             match $res {
                 3 => return (Err(BackendError::out_of_gas()), $gas),
-                _ => return (Err(BackendError::new($msg)), $gas)
+                _ => return (Err(BackendError::new("backend error in env method: ".to_owned() + $method)), $gas)
             }
         }
     }

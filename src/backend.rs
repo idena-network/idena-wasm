@@ -42,7 +42,6 @@ pub trait Backend: Copy + Clone + Send {
     fn remove_storage(&self, key: Vec<u8>) -> BackendResult<()>;
     fn block_timestamp(&self) -> BackendResult<i64>;
     fn block_number(&self) -> BackendResult<u64>;
-    fn send(&self, to: Address, amount: IDNA) -> BackendResult<()>;
     fn min_fee_per_gas(&self) -> BackendResult<IDNA>;
     fn balance(&self, addr: Address) -> BackendResult<IDNA>;
     fn block_seed(&self) -> BackendResult<Vec<u8>>;
@@ -52,8 +51,6 @@ pub trait Backend: Copy + Clone + Send {
     fn burn_all(&self) -> BackendResult<()>;
     fn read_contract_data(&self, addr: Address, key: Vec<u8>) -> BackendResult<Option<Vec<u8>>>;
     fn epoch(&self) -> BackendResult<u16>;
-    fn contract_stake(&self, addr: Address) -> BackendResult<IDNA>;
-    fn move_to_stake(&self, amount: IDNA) -> BackendResult<()>;
     fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>>;
     fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>>;
     fn call(&self, addr: Address, method: &[u8], args: &[u8], amount: &[u8], gas_limit: u64, invocation_ctx: &[u8]) -> BackendResult<ActionResult>;
@@ -69,7 +66,6 @@ pub trait Backend: Copy + Clone + Send {
     fn contract_addr_by_hash(&self, hash:  &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address>;
     fn own_code(&self) -> BackendResult<Vec<u8>>;
     fn code_hash(&self) -> BackendResult<Vec<u8>>;
-    fn read_sharded_data(&self, addr: Address, req : &[u8]) -> BackendResult<ActionResult>;
     fn event(&self, event_name : &[u8], args : &[u8]) -> BackendResult<()>;
     fn pay_amount(&self) -> BackendResult<IDNA>;
 }
@@ -117,10 +113,6 @@ impl Backend for MockBackend {
         todo!()
     }
 
-    fn send(&self, to: Address, amount: Vec<u8>) -> BackendResult<()> {
-        todo!()
-    }
-
     fn min_fee_per_gas(&self) -> BackendResult<IDNA> {
         todo!()
     }
@@ -154,14 +146,6 @@ impl Backend for MockBackend {
     }
 
     fn epoch(&self) -> BackendResult<u16> {
-        todo!()
-    }
-
-    fn contract_stake(&self, addr: Address) -> BackendResult<IDNA> {
-        todo!()
-    }
-
-    fn move_to_stake(&self, amount: IDNA) -> BackendResult<()> {
         todo!()
     }
 
@@ -222,10 +206,6 @@ impl Backend for MockBackend {
     }
 
     fn code_hash(&self) -> BackendResult<Vec<u8>> {
-        todo!()
-    }
-
-    fn read_sharded_data(&self, addr: Address, req: &[u8]) -> BackendResult<ActionResult> {
         todo!()
     }
 
