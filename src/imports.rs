@@ -23,12 +23,10 @@ pub fn process_gas_info<B: Backend>(
     used_gas: u64,
 ) -> VmResult<()> {
     let gas_left = env.get_gas_left();
-    println!("get gas left {}", gas_left);
     let gas_left = gas_left.saturating_sub(used_gas);
 
     // This tells wasmer how much more gas it can consume from this point in time.
     env.set_gas_left(gas_left);
-    println!("set gas left {}", gas_left);
     if gas_left == 0 {
         Err(VmError::out_of_gas())
     } else {
@@ -61,7 +59,6 @@ pub fn set_storage<B: Backend>(env: &Env<B>, key: u32, value: u32) -> VmResult<(
     env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.set_storage(key, value);
-    println!("set_storage used_gas {}", gas);
     process_gas_info(env, gas)?;
 
     result?;

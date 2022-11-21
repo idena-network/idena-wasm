@@ -526,7 +526,7 @@ impl Backend for apiWrapper {
         let mut used_gas = 0_u64;
         let mut data = UnmanagedVector::default();
         (self.api.vtable.call)(self.api.state, U8SliceView::new(Some(&addr)), U8SliceView::new(Some(method)),
-                                               U8SliceView::new(Some(args)), U8SliceView::new(Some(amount)), U8SliceView::new(Some(invocation_ctx)), gas_limit, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+                               U8SliceView::new(Some(args)), U8SliceView::new(Some(amount)), U8SliceView::new(Some(invocation_ctx)), gas_limit, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
 
         let raw_data = match data.consume() {
             None => {
@@ -636,7 +636,7 @@ impl Backend for apiWrapper {
         let mut used_gas = 0_u64;
         let mut data = UnmanagedVector::default();
         (self.api.vtable.deploy)(self.api.state, U8SliceView::new(Some(&code)), U8SliceView::new(Some(args)), U8SliceView::new(Some(nonce)),
-                                                 U8SliceView::new(Some(amount)), gas_limit, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+                                 U8SliceView::new(Some(amount)), gas_limit, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
         let raw_data = match data.consume() {
             None => {
                 return (Err(BackendError::new("action result bytes cannot be empty")), used_gas);
@@ -715,30 +715,33 @@ fn do_execute(api: GoApi, code: ByteSliceView,
               method_name: ByteSliceView,
               args: ByteSliceView,
               invocation_context: ByteSliceView,
+              contract_addr: ByteSliceView,
               gas_limit: u64,
               gas_used: &mut u64) -> ActionResult {
     *gas_used = BASE_CALL_COST;
 
+    let addr = contract_addr.read().unwrap_or(&[]);
+
     let data: Vec<u8> = match code.read() {
         Some(v) => v.to_vec(),
-        None => return action_result_from_err(VmError::custom("code is required"), gas_limit, *gas_used)
+        None => return action_result_from_err(VmError::custom("code is required"), addr, gas_limit, *gas_used)
     };
     let arguments_bytes = args.read().unwrap_or(&[]);
 
     let method_bytes: Vec<u8> = match method_name.read() {
         Some(v) => v.into(),
-        None => return action_result_from_err(VmError::custom("method is required"), gas_limit, *gas_used)
+        None => return action_result_from_err(VmError::custom("method is required"), addr, gas_limit, *gas_used)
     };
 
     let method = String::from_utf8_lossy(&method_bytes).to_string();
 
     if arguments_bytes.len() == 0 {
-        return action_result_from_err(VmError::custom("invalid arguments format"), gas_limit, *gas_used);
+        return action_result_from_err(VmError::custom("invalid arguments format"), addr, gas_limit, *gas_used);
     }
 
     let args = match convert_args(arguments_bytes) {
         Ok(a) => a,
-        Err(err) => return action_result_from_err(err, gas_limit, *gas_used),
+        Err(err) => return action_result_from_err(err, addr, gas_limit, *gas_used),
     };
     println!("execute code: code len={}, method={}, args={:?}, gas limit={}", data.len(), method, args, gas_limit);
 
@@ -749,10 +752,10 @@ fn do_execute(api: GoApi, code: ByteSliceView,
         ctx = proto::models::InvocationContext::parse_from_bytes(ctx_bytes).unwrap_or_default().into()
     }
 
-    VmRunner::execute(apiWrapper::new(api), data, &method, arguments_bytes, gas_limit, gas_used, ctx)
+    VmRunner::execute(apiWrapper::new(api), addr, data, &method, arguments_bytes, gas_limit, gas_used, ctx)
 }
 
-fn action_result_from_err(err: VmError, gas_limit: u64, gas_used: u64) -> ActionResult {
+fn action_result_from_err(err: VmError, contract_addr: &[u8], gas_limit: u64, gas_used: u64) -> ActionResult {
     ActionResult {
         error: err.to_string(),
         success: false,
@@ -761,32 +764,35 @@ fn action_result_from_err(err: VmError, gas_limit: u64, gas_used: u64) -> Action
         input_action: Action::None,
         sub_action_results: vec![],
         output_data: vec![],
-        contract: vec![],
+        contract: contract_addr.to_vec(),
     }
 }
 
 
 fn do_deploy(api: GoApi, code: ByteSliceView,
              args: ByteSliceView,
+             contract_addr: ByteSliceView,
              gas_limit: u64,
              gas_used: &mut u64) -> ActionResult {
     *gas_used = BASE_DEPLOY_COST;
+    let addr = contract_addr.read().unwrap_or(&[]);
+
     let data: Vec<u8> = match code.read() {
         Some(v) => v.to_vec(),
-        None => return action_result_from_err(VmError::custom("code is required"), gas_limit, *gas_used)
+        None => return action_result_from_err(VmError::custom("code is required"), addr, gas_limit, *gas_used)
     };
     let arguments_bytes = args.read().unwrap_or(&[]);
 
     if arguments_bytes.len() == 0 {
-        return action_result_from_err(VmError::custom("invalid arguments"), gas_limit, *gas_used);
+        return action_result_from_err(VmError::custom("invalid arguments"), addr, gas_limit, *gas_used);
     }
 
     let args = match convert_args(arguments_bytes) {
         Ok(a) => a,
-        Err(err) => return action_result_from_err(err, gas_limit, *gas_used),
+        Err(err) => return action_result_from_err(err, addr, gas_limit, *gas_used),
     };
     println!("deploy code: code len={}, args={:?}, gas limit={}", data.len(), args, gas_limit);
-    VmRunner::deploy(apiWrapper::new(api), data, arguments_bytes, gas_limit, gas_used)
+    VmRunner::deploy(apiWrapper::new(api), addr, data, arguments_bytes, gas_limit, gas_used)
 }
 
 
@@ -795,11 +801,12 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
                           method_name: ByteSliceView,
                           args: ByteSliceView,
                           invocation_context: ByteSliceView,
+                          contract_addr: ByteSliceView,
                           gas_limit: u64,
                           gas_used: &mut u64,
                           action_result: &mut UnmanagedVector,
                           err_msg: Option<&mut UnmanagedVector>) -> u8 {
-    let res = do_execute(api, code, method_name, args, invocation_context, gas_limit, gas_used);
+    let res = do_execute(api, code, method_name, args, invocation_context, contract_addr, gas_limit, gas_used);
     let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
     *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
     0
@@ -809,11 +816,12 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
 #[no_mangle]
 pub extern "C" fn deploy(api: GoApi, code: ByteSliceView,
                          args: ByteSliceView,
+                         contract_addr: ByteSliceView,
                          gas_limit: u64,
                          gas_used: &mut u64,
                          action_result: &mut UnmanagedVector,
                          err_msg: Option<&mut UnmanagedVector>) -> u8 {
-    let res = do_deploy(api, code, args, gas_limit, gas_used);
+    let res = do_deploy(api, code, args, contract_addr, gas_limit, gas_used);
     let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
     *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
     0

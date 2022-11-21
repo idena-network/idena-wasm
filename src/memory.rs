@@ -39,7 +39,6 @@ pub fn to_u32<T: std::convert::TryInto<u32> + ToString + Copy>(input: T) -> VmRe
 }
 
 pub fn read_region(memory: &wasmer::Memory, ptr: u32, max_length: usize) -> VmResult<Vec<u8>> {
-    println!("try to read region {:}", ptr);
     let region = get_region(memory, ptr)?;
 
     if region.length > to_u32(max_length)? {

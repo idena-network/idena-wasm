@@ -254,7 +254,6 @@ pub struct InvocationContext {
 
 impl From<protoPromiseResult> for PromiseResult {
     fn from(promise_res: protoPromiseResult) -> Self {
-        println!("unmarshal protoPromiseResult {:?}", promise_res);
         if !promise_res.success {
             return PromiseResult::Failed;
         }
@@ -268,7 +267,6 @@ impl From<protoPromiseResult> for PromiseResult {
 impl Into<protoPromiseResult> for &PromiseResult {
     fn into(self) -> protoPromiseResult {
         let mut res = protoPromiseResult::default();
-        println!("marshal promise result {:?}", self);
         match self {
             PromiseResult::Empty => {
                 res.success = true
