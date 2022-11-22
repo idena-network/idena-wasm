@@ -751,8 +751,8 @@ fn do_execute(api: GoApi, code: ByteSliceView,
     if ctx_bytes.len() > 0 {
         ctx = proto::models::InvocationContext::parse_from_bytes(ctx_bytes).unwrap_or_default().into()
     }
-
-    VmRunner::execute(apiWrapper::new(api), addr, data, &method, arguments_bytes, gas_limit, gas_used, ctx)
+    VmRunner::new(apiWrapper::new(api), addr.to_vec(), gas_limit, Some(ctx))
+        .execute(data, &method, arguments_bytes, gas_used)
 }
 
 fn action_result_from_err(err: VmError, contract_addr: &[u8], gas_limit: u64, gas_used: u64) -> ActionResult {
@@ -792,7 +792,8 @@ fn do_deploy(api: GoApi, code: ByteSliceView,
         Err(err) => return action_result_from_err(err, addr, gas_limit, *gas_used),
     };
     println!("deploy code: code len={}, args={:?}, gas limit={}", data.len(), args, gas_limit);
-    VmRunner::deploy(apiWrapper::new(api), addr, data, arguments_bytes, gas_limit, gas_used)
+    VmRunner::new(apiWrapper::new(api), addr.to_vec(), gas_limit, None)
+        .deploy(data, arguments_bytes, gas_used)
 }
 
 

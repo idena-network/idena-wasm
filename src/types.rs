@@ -237,7 +237,6 @@ pub enum PromiseResult {
     Failed,
 }
 
-
 #[derive(Clone)]
 pub struct Promise {
     pub predecessor_id: Address,
@@ -245,8 +244,7 @@ pub struct Promise {
     pub action: Action,
     pub action_callback: Option<Action>,
 }
-
-
+#[derive(Clone)]
 pub struct InvocationContext {
     pub is_callback: bool,
     pub promise_result: Option<PromiseResult>,

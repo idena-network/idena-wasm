@@ -70,7 +70,7 @@ pub fn get_storage<B: Backend>(env: &Env<B>, key: u32) -> VmResult<u32> {
     let key = read_region(&env.memory(), key, MAX_STORAGE_KEY_SIZE)?;
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.get_storage(key);
 
@@ -88,7 +88,7 @@ pub fn remove_storage<B: Backend>(env: &Env<B>, key: u32) -> VmResult<()> {
     let key = read_region(&env.memory(), key, MAX_STORAGE_KEY_SIZE)?;
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.remove_storage(key);
 
@@ -102,7 +102,7 @@ pub fn remove_storage<B: Backend>(env: &Env<B>, key: u32) -> VmResult<()> {
 pub fn block_timestamp<B: Backend>(env: &Env<B>) -> VmResult<i64> {
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.block_timestamp();
 
@@ -114,7 +114,7 @@ pub fn block_timestamp<B: Backend>(env: &Env<B>) -> VmResult<i64> {
 pub fn block_number<B: Backend>(env: &Env<B>) -> VmResult<u64> {
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.block_number();
 
@@ -126,7 +126,7 @@ pub fn block_number<B: Backend>(env: &Env<B>) -> VmResult<u64> {
 pub fn block_seed<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.block_seed();
 
@@ -138,7 +138,7 @@ pub fn block_seed<B: Backend>(env: &Env<B>) -> VmResult<u32> {
 pub fn min_fee_per_gas<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.min_fee_per_gas();
 
@@ -152,7 +152,7 @@ pub fn balance<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u32> {
 
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.balance(address);
 
@@ -164,7 +164,7 @@ pub fn balance<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u32> {
 pub fn network_size<B: Backend>(env: &Env<B>) -> VmResult<u64> {
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.network_size();
 
@@ -179,7 +179,7 @@ pub fn identity_state<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u8> {
 
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.identity_state(address);
 
@@ -193,7 +193,7 @@ pub fn identity<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u32> {
 
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.identity(address);
 
@@ -214,7 +214,7 @@ pub fn event<B: Backend>(env: &Env<B>, event_name: u32, args: u32) -> VmResult<(
 
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
 
     let (result, gas) = env.backend.event(&event_name, &args);
 
@@ -226,7 +226,7 @@ pub fn event<B: Backend>(env: &Env<B>, event_name: u32, args: u32) -> VmResult<(
 pub fn epoch<B: Backend>(env: &Env<B>) -> VmResult<i32> {
     let gas_left = env.get_gas_left();
 
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (result, gas) = env.backend.epoch();
     process_gas_info(env, gas)?;
     Ok(result? as i32)
@@ -234,46 +234,15 @@ pub fn epoch<B: Backend>(env: &Env<B>) -> VmResult<i32> {
 
 pub fn pay_amount<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (result, gas) = env.backend.pay_amount();
     process_gas_info(env, gas)?;
     write_to_contract(env, &result?)
 }
 
-/*
-pub fn send<B: Backend>(env: &Env<B>, to: u32, amount: u32) -> VmResult<i32> {
-    let to = read_region(&env.memory(), to, MAX_ADDRESS_SIZE)?;
-
-    let amount = read_region(&env.memory(), amount, MAX_IDNA_SIZE)?;
-
-    let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
-    let (res, gas) = env.backend.send(to, amount);
-    process_gas_info(env, gas)?;
-    match res {
-        Ok(_) => Ok(0),
-        Err(_) => Ok(1),
-    }
-}
-
-pub fn call<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, amount: u32, gas_limit: u32) -> VmResult<ActionResult> {
-    println!("{} {} {} {}", addr, method, args, gas_limit);
-
-    let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
-    let method = read_region(&env.memory(), method, 1024)?;
-
-    let amount = if amount > 0 { read_region(&env.memory(), amount, MAX_IDNA_SIZE)? } else { vec![] };
-
-    let args = read_region(&env.memory(), args, 1024)?;
-
-    let (res, _) = env.backend.call(to, &method, &args, &amount, gas_limit.into(), );
-
-    Ok(res?)
-}*/
-
 pub fn caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.caller();
     process_gas_info(env, gas)?;
     let value = res?;
@@ -282,7 +251,7 @@ pub fn caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
 
 pub fn original_caller<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.original_caller();
     process_gas_info(env, gas)?;
     let value = res?;
@@ -345,7 +314,7 @@ pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method:
 
     if !amountValue.is_empty() {
         let gas_left = env.get_gas_left();
-        env.backend.set_remaining_gas(gas_left);
+        env.backend.set_remaining_gas(gas_left).0?;
         let (res, gas) = env.backend.deduct_balance(amountValue.to_vec());
         process_gas_info(env, gas)?;
         res?;
@@ -366,7 +335,7 @@ pub fn create_deploy_contract_promise<B: Backend>(env: &Env<B>, code: u32, args:
 
     if !amountValue.is_empty() {
         let gas_left = env.get_gas_left();
-        env.backend.set_remaining_gas(gas_left);
+        env.backend.set_remaining_gas(gas_left).0?;
         let (res, gas) = env.backend.deduct_balance(amountValue.to_vec());
         process_gas_info(env, gas)?;
         res?;
@@ -385,7 +354,7 @@ pub fn promise_then<B: Backend>(env: &Env<B>, promise_idx: u32, method: u32, arg
 
     if !amount.is_empty() {
         let gas_left = env.get_gas_left();
-        env.backend.set_remaining_gas(gas_left);
+        env.backend.set_remaining_gas(gas_left).0?;
         let (res, gas) = env.backend.deduct_balance(amount.to_vec());
         process_gas_info(env, gas)?;
         res?;
@@ -399,7 +368,7 @@ pub fn create_transfer_promise<B: Backend>(env: &Env<B>, addr: u32, amount: u32)
     let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
     let amount = read_region(&env.memory(), amount, MAX_IDNA_SIZE)?;
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.deduct_balance(amount.to_vec());
     process_gas_info(env, gas)?;
     res?;
@@ -409,7 +378,7 @@ pub fn create_transfer_promise<B: Backend>(env: &Env<B>, addr: u32, amount: u32)
 
 pub fn own_addr<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.own_addr();
     process_gas_info(env, gas)?;
     let addr = match res {
@@ -425,7 +394,7 @@ pub fn contract_addr<B: Backend>(env: &Env<B>, code: u32, args: u32, nonce: u32)
     let nonce = if nonce > 0 { read_region(&env.memory(), nonce, MAX_STRING_SIZE)? } else { vec![] };
 
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.contract_addr(&code, &args, &nonce);
     process_gas_info(env, gas)?;
     let addr = match res {
@@ -441,7 +410,7 @@ pub fn contract_addr_by_hash<B: Backend>(env: &Env<B>, hash: u32, args: u32, non
     let nonce = if nonce > 0 { read_region(&env.memory(), nonce, MAX_STRING_SIZE)? } else { vec![] };
 
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.contract_addr_by_hash(&hash, &args, &nonce);
     process_gas_info(env, gas)?;
     let addr = match res {
@@ -454,7 +423,7 @@ pub fn contract_addr_by_hash<B: Backend>(env: &Env<B>, hash: u32, args: u32, non
 
 pub fn own_code<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.own_code();
     process_gas_info(env, gas)?;
     let code = match res {
@@ -466,7 +435,7 @@ pub fn own_code<B: Backend>(env: &Env<B>) -> VmResult<u32> {
 
 pub fn code_hash<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
-    env.backend.set_remaining_gas(gas_left);
+    env.backend.set_remaining_gas(gas_left).0?;
     let (res, gas) = env.backend.code_hash();
     process_gas_info(env, gas)?;
     let hash = match res {
