@@ -43,7 +43,7 @@ pub trait Backend: Copy + Clone + Send {
     fn block_timestamp(&self) -> BackendResult<i64>;
     fn block_number(&self) -> BackendResult<u64>;
     fn min_fee_per_gas(&self) -> BackendResult<IDNA>;
-    fn balance(&self, addr: Address) -> BackendResult<IDNA>;
+    fn balance(&self) -> BackendResult<IDNA>;
     fn block_seed(&self) -> BackendResult<Vec<u8>>;
     fn network_size(&self) -> BackendResult<u64>;
     fn identity_state(&self, addr: Address) -> BackendResult<u8>;
@@ -117,7 +117,7 @@ impl Backend for MockBackend {
         todo!()
     }
 
-    fn balance(&self, addr: Address) -> BackendResult<IDNA> {
+    fn balance(&self) -> BackendResult<IDNA> {
         todo!()
     }
 

@@ -17,6 +17,7 @@ const MAX_IDNA_SIZE: usize = 32;
 const MAX_STORAGE_VALUE_SIZE: usize = 128 * 1024;
 const MAX_STRING_SIZE: usize = 4 * 1024;
 const MAX_ARGS_SIZE: usize = 10 * 1024;
+pub const MAX_RETURN_VALUE_SIZE: usize = 64 * 1024;
 
 pub fn process_gas_info<B: Backend>(
     env: &Env<B>,
@@ -147,14 +148,12 @@ pub fn min_fee_per_gas<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     write_to_contract(env, &result?)
 }
 
-pub fn balance<B: Backend>(env: &Env<B>, addr: u32) -> VmResult<u32> {
-    let address = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
-
+pub fn balance<B: Backend>(env: &Env<B>) -> VmResult<u32> {
     let gas_left = env.get_gas_left();
 
     env.backend.set_remaining_gas(gas_left).0?;
 
-    let (result, gas) = env.backend.balance(address);
+    let (result, gas) = env.backend.balance();
 
     process_gas_info(env, gas)?;
 
@@ -289,24 +288,32 @@ pub fn panic<B: Backend>(env: &Env<B>, msg: u32) -> VmResult<()> {
     Err(VmError::wasm_err(msg))
 }
 
-pub fn promise_result<B: Backend>(env: &Env<B>, result: u32) -> VmResult<i32> {
+pub fn promise_result<B: Backend>(env: &Env<B>, status: u32) -> VmResult<u32> {
     Ok(match &env.promise_result {
         Some(v) => {
             match v {
-                PromiseResult::Empty => 1,
-                PromiseResult::Failed => 0,
+                PromiseResult::Empty => {
+                    write_region(&env.memory(), status, &[1]);
+                    0
+                }
+                PromiseResult::Failed => {
+                    write_region(&env.memory(), status, &[0]);
+                    0
+                }
                 PromiseResult::Value(data) => {
-                    write_region(&env.memory(), result, &data);
-                    2
+                    write_region(&env.memory(), status, &[2]);
+                    write_to_contract(&env, data)?
                 }
             }
         }
-        None => 1
+        None => {
+            write_region(&env.memory(), status, &[1]);
+            0
+        }
     })
 }
 
 pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method: u32, args: u32, amount: u32, gas_limit: u32) -> VmResult<u32> {
-    println!("creating call promise addr = {:}, {:}, {:}, {:}, {:}", addr, method, args, amount, gas_limit);
     let to = read_region(&env.memory(), addr, MAX_ADDRESS_SIZE)?;
     let method = read_region(&env.memory(), method, MAX_STRING_SIZE)?;
     let args = if args > 0 { read_region(&env.memory(), args, MAX_ARGS_SIZE)? } else { vec![] };
@@ -327,7 +334,6 @@ pub fn create_call_function_promise<B: Backend>(env: &Env<B>, addr: u32, method:
 }
 
 pub fn create_deploy_contract_promise<B: Backend>(env: &Env<B>, code: u32, args: u32, nonce: u32, amount: u32, gas_limit: u32) -> VmResult<u32> {
-    println!("creating deploy promise codePtr = {:}, {:}, {:}, {:}, {:}", code, args, nonce, amount, gas_limit);
     let code = read_region(&env.memory(), code, MAX_CODE_SIZE)?;
     let args = if args > 0 { read_region(&env.memory(), args, MAX_ARGS_SIZE)? } else { vec![] };
     let nonce = if nonce > 0 { read_region(&env.memory(), nonce, MAX_STRING_SIZE)? } else { vec![] };

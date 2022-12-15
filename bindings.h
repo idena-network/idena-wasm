@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <stdlib.h>
 
+#define MAX_RETURN_VALUE_SIZE (64 * 1024)
+
 #define BASE_PROMISE_COST 1000
 
 #define BASE_DEPLOY_COST 30000
@@ -94,7 +96,7 @@ typedef struct GoApi_vtable {
   int32_t (*block_timestamp)(const struct api_t*, uint64_t*, int64_t*);
   int32_t (*send)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*min_fee_per_gas)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
-  int32_t (*balance)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*balance)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*block_seed)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*network_size)(const struct api_t*, uint64_t*, uint64_t*);
   int32_t (*identity_state)(const struct api_t*, struct U8SliceView, uint64_t*, uint8_t*);
@@ -151,7 +153,8 @@ uint8_t execute(struct GoApi api,
                 uint64_t gas_limit,
                 uint64_t *gas_used,
                 struct UnmanagedVector *action_result,
-                struct UnmanagedVector *err_msg);
+                struct UnmanagedVector *err_msg,
+                bool is_debug);
 
 uint8_t deploy(struct GoApi api,
                struct ByteSliceView code,
@@ -160,4 +163,5 @@ uint8_t deploy(struct GoApi api,
                uint64_t gas_limit,
                uint64_t *gas_used,
                struct UnmanagedVector *action_result,
-               struct UnmanagedVector *err_msg);
+               struct UnmanagedVector *err_msg,
+               bool is_debug);

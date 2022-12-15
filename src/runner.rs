@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use indexmap::map::Iter;
 use protobuf::{Message, RepeatedField, SingularPtrField};
-use wasmer::{BaseTunables, CompilerConfig, Exportable, ExportIndex, Exports, Function, ImportObject, imports, Instance, Module, Pages, Singlepass, Store, Target, Val, Value};
+use wasmer::{BaseTunables, ChainableNamedResolver, CompilerConfig, Exportable, ExportIndex, Exports, Function, ImportObject, imports, Instance, Module, Pages, Resolver, Singlepass, Store, Target, Val, Value};
 use wasmer::wasmparser::Operator;
 use wasmer_engine_universal::Universal;
 use wasmer_middlewares::Metering;
@@ -30,25 +30,29 @@ pub struct VmRunner<B: Backend + 'static> {
     pub api: B,
     pub gas_limit: Gas,
     ctx: Option<InvocationContext>,
+    pub is_debug: bool,
 }
 
 impl<B: Backend + 'static> VmRunner<B> {
-    pub fn new(api: B, contract_addr: Address, gas_limit: Gas, ctx: Option<InvocationContext>) -> Self {
+    pub fn new(api: B, contract_addr: Address, gas_limit: Gas, ctx: Option<InvocationContext>, is_debug: bool) -> Self {
         VmRunner {
             contact_addr: contract_addr,
             api,
             gas_limit,
             ctx,
+            is_debug,
         }
     }
 
     fn prepare_arguments(&self, env: &Env<B>, info: &ModuleInfo, method: &String, args: protobuf::RepeatedField<ProtoArgs_Argument>) -> VmResult<Vec<Val>> {
         let mut params_cnt = 0;
 
-        let exp_it: Iter<'_, String, ExportIndex> = info.exports.iter();
+        if self.is_debug {
+            let exp_it: Iter<'_, String, ExportIndex> = info.exports.iter();
 
-        for k in exp_it {
-            println!("export [{}]={:?}", k.0, k.1)
+            for k in exp_it {
+                println!("export [{}]={:?}", k.0, k.1)
+            }
         }
 
         match info.exports.get(method) {
@@ -91,9 +95,8 @@ impl<B: Backend + 'static> VmRunner<B> {
         let base = BaseTunables::for_target(&Target::default());
         let store = Store::new_with_tunables(&Universal::new(compiler_config).engine(), LimitingTunables::new(base, Pages(100)));
         let env = Env::new(self.api, promise_result);
-        let import_object = imports! {
+        let mut import_object = imports! {
         "env" => {
-            "debug" => Function::new_native_with_env(&store, env.clone(), debug),
             "abort" => Function::new_native_with_env(&store, env.clone(), abort),
             "panic" => Function::new_native_with_env(&store, env.clone(), panic),
             "set_storage" => Function::new_native_with_env(&store, env.clone(), set_storage),
@@ -124,6 +127,15 @@ impl<B: Backend + 'static> VmRunner<B> {
             "bytes_to_hex" => Function::new_native_with_env(&store, env.clone(), bytes_to_hex),
             }
         };
+        let mut import_obj_debug = imports! {};
+        if self.is_debug {
+            import_obj_debug = imports! {
+            "env" => {
+                   "debug" =>  Function::new_native_with_env(&store, env.clone(), debug)
+            }
+        };
+        }
+        let resolver = import_obj_debug.chain_back(import_object);
         let module = match Module::new(&store, code) {
             Ok(v) => v,
             Err(err) => {
@@ -131,7 +143,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             }
         };
 
-        let instance = Instance::new(&module, &import_object)?;
+        let instance = Instance::new(&module, &resolver)?;
 
         let wasmer_instance = Box::from(instance);
 
@@ -146,18 +158,16 @@ impl<B: Backend + 'static> VmRunner<B> {
             is_callback: is_callback,
             promise_result: promise_result,
         };
-
         let (res, gas) = self.api.call(contract, action.method_name.as_bytes(), &action.args, &action.deposit, action.gas_limit, &Into::<protoContext>::into(ctx).write_to_bytes().unwrap_or_default());
-
-        println!("apply_function_call {:} {:}", action.method_name, gas);
-
         *gas_used = gas;
         Ok(res?)
     }
 
     pub fn execute_promises(&self, env: Env<B>) -> Vec<ActionResult> {
         let promises = env.get_promises();
-        println!("execute promises cnt={}", promises.len());
+        if self.is_debug {
+            println!("execute promises cnt={}", promises.len());
+        }
         if promises.is_empty() {
             return Vec::new();
         }
@@ -203,7 +213,9 @@ impl<B: Backend + 'static> VmRunner<B> {
                     let promise_result = match action_result {
                         Ok(action_res) => {
                             result.push(action_res.clone());
-                            if action_res.output_data.is_empty() {
+                            if !action_res.success {
+                                Some(PromiseResult::Failed)
+                            } else if action_res.output_data.is_empty() {
                                 Some(PromiseResult::Empty)
                             } else {
                                 Some(PromiseResult::Value(action_res.output_data))
@@ -310,11 +322,10 @@ impl<B: Backend + 'static> VmRunner<B> {
         });
         let addr = self.contact_addr.clone();
         let (env, module, instance) = unwrap_or_action_res!(self.build_env(code, None), input_action, *gas_used, self.gas_limit, addr);
-
+        unwrap_or_action_res!(process_gas_info(&env, BASE_DEPLOY_COST), input_action, *gas_used, self.gas_limit, self.contact_addr.clone());
         unwrap_or_action_res!(self.deploy_with_env(env, module, input_action.clone(),  arg_bytes, gas_used), input_action, *gas_used, self.gas_limit, addr)
     }
     pub fn deploy_with_env(&self, env: Env<B>, module: Module, input_action: Action, arg_bytes: &[u8], gas_used: &mut u64) -> VmResult<ActionResult> {
-        process_gas_info(&env, BASE_DEPLOY_COST)?;
         let args = convert_args(arg_bytes)?;
 
         let required_export = ["allocate", "deploy", "memory"];
@@ -328,17 +339,9 @@ impl<B: Backend + 'static> VmRunner<B> {
 
         let wasm_args = self.prepare_arguments(&env.clone(), module.info(), &"deploy".to_string(), args)?;
 
-        let res = match env.call_function("deploy", &wasm_args) {
-            Ok(_) => {
-                *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
-                Ok(())
-            }
-            Err(err) => {
-                *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
-                Err(err)
-            }
-        };
+        let res = env.call_function("deploy", &wasm_args);
 
+        *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
 
         if res.is_err() {
             return Ok(Self::action_result_from_err(res.err().unwrap(), self.contact_addr.clone(), input_action, *gas_used, self.gas_limit));
@@ -370,8 +373,6 @@ impl<B: Backend + 'static> VmRunner<B> {
     }
 
     pub fn execute_with_env(&self, env: Env<B>, module: Module, input_action: Action, method: &String, arg_bytes: &[u8], gas_used: &mut u64, is_callback: bool) -> VmResult<ActionResult> {
-        process_gas_info(&env, BASE_CALL_COST)?;
-
         if method == "deploy" {
             return Err(VmError::custom("direct call to deploy is forbidden'"));
         }
@@ -394,7 +395,7 @@ impl<B: Backend + 'static> VmRunner<B> {
                     };
                 }
                 if ptr > 0 {
-                    output_data = read_region(&env.memory(), ptr as u32, 1024).unwrap_or(vec![]);
+                    output_data = read_region(&env.memory(), ptr as u32, MAX_RETURN_VALUE_SIZE).unwrap_or(vec![]);
                 }
                 *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
                 Ok(())
@@ -417,8 +418,9 @@ impl<B: Backend + 'static> VmRunner<B> {
             *gas_used -= gas_refund;
         }
         res.gas_used = *gas_used;
-
-        println!("action result={:?}", res);
+        if self.is_debug {
+            println!("action result={:?}", res);
+        }
         Ok(res)
     }
 
