@@ -125,6 +125,8 @@ impl<B: Backend + 'static> VmRunner<B> {
             "epoch" => Function::new_native_with_env(&store, env.clone(), epoch),
             "pay_amount" => Function::new_native_with_env(&store, env.clone(), pay_amount),
             "bytes_to_hex" => Function::new_native_with_env(&store, env.clone(), bytes_to_hex),
+            "block_header" =>  Function::new_native_with_env(&store, env.clone(), block_header),
+            "keccak256" =>  Function::new_native_with_env(&store, env.clone(), keccak256),
             }
         };
         let mut import_obj_debug = imports! {};

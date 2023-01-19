@@ -228,8 +228,20 @@ pub struct GoApi_vtable {
     pub pay_amount: extern "C" fn(
         *const api_t,
         *mut u64,
-        *mut UnmanagedVector,
-    ) -> i32,// amount
+        *mut UnmanagedVector, // amount
+    ) -> i32,
+    pub block_header: extern "C" fn(
+        *const api_t,
+        u64, // height
+        *mut u64,
+        *mut UnmanagedVector, // protobuf data
+    ) -> i32,
+    pub keccak256: extern "C" fn(
+        *const api_t,
+        U8SliceView, // data
+        *mut u64,
+        *mut UnmanagedVector, // keccak-256 hash of data
+    ) -> i32,
 }
 
 #[repr(C)]
@@ -433,7 +445,7 @@ impl Backend for apiWrapper {
     fn balance(&self) -> BackendResult<IDNA> {
         let mut used_gas = 0_u64;
         let mut balance = UnmanagedVector::default();
-        let go_result = (self.api.vtable.balance)(self.api.state,&mut used_gas as *mut u64, &mut balance as *mut UnmanagedVector);
+        let go_result = (self.api.vtable.balance)(self.api.state, &mut used_gas as *mut u64, &mut balance as *mut UnmanagedVector);
         check_go_result!(go_result, used_gas, "balance");
         let amount = match balance.consume() {
             Some(v) => v,
@@ -703,6 +715,26 @@ impl Backend for apiWrapper {
         };
         (Ok(d), used_gas)
     }
+
+    fn block_header(&self, height: u64) -> BackendResult<Option<Vec<u8>>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.block_header)(self.api.state, height, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        check_go_result!(go_result, used_gas, "block_header");
+        (Ok(data.consume()), used_gas)
+    }
+
+    fn keccak256(&self, data: &[u8]) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut hash = UnmanagedVector::default();
+        let go_result = (self.api.vtable.keccak256)(self.api.state, U8SliceView::new(Some(data)), &mut used_gas as *mut u64, &mut hash as *mut UnmanagedVector);
+        check_go_result!(go_result, used_gas, "keccak256");
+        let value = match hash.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(value), used_gas)
+    }
 }
 
 unsafe impl Send for apiWrapper {}
@@ -717,7 +749,7 @@ fn do_execute(api: GoApi, code: ByteSliceView,
               contract_addr: ByteSliceView,
               gas_limit: u64,
               gas_used: &mut u64,
-              is_debug : bool) -> ActionResult {
+              is_debug: bool) -> ActionResult {
     *gas_used = BASE_CALL_COST;
 
     let addr = contract_addr.read().unwrap_or(&[]);
@@ -776,7 +808,7 @@ fn do_deploy(api: GoApi, code: ByteSliceView,
              contract_addr: ByteSliceView,
              gas_limit: u64,
              gas_used: &mut u64,
-             is_debug : bool) -> ActionResult {
+             is_debug: bool) -> ActionResult {
     *gas_used = BASE_DEPLOY_COST;
     let addr = contract_addr.read().unwrap_or(&[]);
 
@@ -812,7 +844,7 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
                           gas_used: &mut u64,
                           action_result: &mut UnmanagedVector,
                           err_msg: Option<&mut UnmanagedVector>,
-                          is_debug : bool) -> u8 {
+                          is_debug: bool) -> u8 {
     let res = do_execute(api, code, method_name, args, invocation_context, contract_addr, gas_limit, gas_used, is_debug);
     let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
     *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));
@@ -828,7 +860,7 @@ pub extern "C" fn deploy(api: GoApi, code: ByteSliceView,
                          gas_used: &mut u64,
                          action_result: &mut UnmanagedVector,
                          err_msg: Option<&mut UnmanagedVector>,
-                         is_debug : bool) -> u8 {
+                         is_debug: bool) -> u8 {
     let res = do_deploy(api, code, args, contract_addr, gas_limit, gas_used, is_debug);
     let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
     *action_result = UnmanagedVector::new(Some(proto_action.write_to_bytes().unwrap_or(vec![])));

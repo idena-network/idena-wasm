@@ -485,6 +485,24 @@ pub fn bytes_to_hex<B: Backend>(env: &Env<B>, ptr: u32) -> VmResult<u32> {
     write_to_contract(&env, str.as_bytes())
 }
 
+pub fn block_header<B: Backend>(env: &Env<B>, height: u64) -> VmResult<u32> {
+    let data = env.backend.block_header(height);
+    process_gas_info(env, data.1)?;
+    let v = data.0?;
+    match v {
+        Some(header) => write_to_contract(env, &header),
+        None => Ok(0)
+    }
+}
+
+pub fn keccak256<B:Backend>(env : &Env<B>, ptr : u32 ) -> VmResult<u32> {
+    let data = read_region(&env.memory(), ptr, MAX_ARGS_SIZE)?;
+    let hash = env.backend.keccak256(&data);
+    process_gas_info(env, hash.1)?;
+    let hash_value = hash.0?;
+    write_to_contract(env, &hash_value)
+}
+
 
 
 

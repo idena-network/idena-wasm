@@ -123,6 +123,8 @@ typedef struct GoApi_vtable {
   int32_t (*event)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*);
   int32_t (*read_contract_data)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*pay_amount)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*block_header)(const struct api_t*, uint64_t, uint64_t*, struct UnmanagedVector*);
+  int32_t (*keccak256)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {
