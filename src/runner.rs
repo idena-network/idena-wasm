@@ -357,6 +357,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             *gas_used -= gas_refund;
         }
         res.gas_used = *gas_used;
+        res.remaining_gas += gas_refund;
         Ok(res)
     }
 
@@ -420,6 +421,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             *gas_used -= gas_refund;
         }
         res.gas_used = *gas_used;
+        res.remaining_gas += gas_refund;
         if self.is_debug {
             println!("action result={:?}", res);
         }
