@@ -70,6 +70,7 @@ pub trait Backend: Copy + Clone + Send {
     fn pay_amount(&self) -> BackendResult<IDNA>;
     fn block_header(&self, height : u64) -> BackendResult<Option<Vec<u8>>>;
     fn keccak256(&self, data: &[u8]) -> BackendResult<Vec<u8>>;
+    fn global_state(&self) -> BackendResult<Vec<u8>>;
 }
 
 pub struct MockBackend {}
@@ -224,6 +225,10 @@ impl Backend for MockBackend {
     }
 
     fn keccak256(&self, data: &[u8]) -> BackendResult<Vec<u8>> {
+        todo!()
+    }
+
+    fn global_state(&self) -> BackendResult<Vec<u8>> {
         todo!()
     }
 }

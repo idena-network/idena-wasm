@@ -125,6 +125,7 @@ typedef struct GoApi_vtable {
   int32_t (*pay_amount)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*block_header)(const struct api_t*, uint64_t, uint64_t*, struct UnmanagedVector*);
   int32_t (*keccak256)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
+  int32_t (*global_state)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {

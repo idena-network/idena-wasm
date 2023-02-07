@@ -1,4 +1,5 @@
 use std::borrow::Borrow;
+use std::ops::Add;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
@@ -22,7 +23,7 @@ use crate::imports::*;
 use crate::limiting_tunables::LimitingTunables;
 use crate::memory::{read_region, VmResult};
 use crate::proto::models::{InvocationContext as protoContext, ProtoArgs_Argument};
-use crate::types::{Action, ActionResult, Address, DeployContractAction, FunctionCallAction, Gas, InvocationContext, Promise, PromiseResult, ReadContractDataAction, ReadShardedDataAction};
+use crate::types::{Action, ActionResult, Address, DeployContractAction, FunctionCallAction, Gas, IDNA, InvocationContext, Promise, PromiseResult, ReadContractDataAction, ReadShardedDataAction};
 use crate::types::PromiseResult::Failed;
 
 pub struct VmRunner<B: Backend + 'static> {
@@ -127,6 +128,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             "bytes_to_hex" => Function::new_native_with_env(&store, env.clone(), bytes_to_hex),
             "block_header" =>  Function::new_native_with_env(&store, env.clone(), block_header),
             "keccak256" =>  Function::new_native_with_env(&store, env.clone(), keccak256),
+            "global_state" =>  Function::new_native_with_env(&store, env.clone(), global_state),
             }
         };
         let mut import_obj_debug = imports! {};
@@ -165,6 +167,14 @@ impl<B: Backend + 'static> VmRunner<B> {
         Ok(res?)
     }
 
+    pub fn refund_deposit(&self, dest : &Address, amount : &IDNA) -> VmResult<()> {
+        if !amount.is_empty() {
+            self.api.add_balance(dest.to_vec(), amount.to_vec()).0?;
+            self.api.commit();
+        }
+        return Ok(())
+    }
+
     pub fn execute_promises(&self, env: Env<B>) -> Vec<ActionResult> {
         let promises = env.get_promises();
         if self.is_debug {
@@ -186,7 +196,8 @@ impl<B: Backend + 'static> VmRunner<B> {
                         Ok(action_res) => {
                             result.push(action_res.clone());
                             if !action_res.success {
-                                Some(PromiseResult::Failed)
+                                self.refund_deposit(&p.predecessor_id, &call.deposit);
+                                Some(Failed)
                             } else if action_res.output_data.is_empty() {
                                 Some(PromiseResult::Empty)
                             } else {
@@ -194,13 +205,9 @@ impl<B: Backend + 'static> VmRunner<B> {
                             }
                         }
                         Err(err) => {
-                            if !call.deposit.is_empty() {
-                                // refund deposit
-                                self.api.add_balance(p.predecessor_id.to_vec(), call.deposit.to_vec());
-                                self.api.commit();
-                            }
+                            self.refund_deposit(&p.predecessor_id, &call.deposit);
                             result.push(Self::action_result_from_err(err, p.receiver_id.clone(), p.action.clone(), gas_used, call.gas_limit));
-                            Some(PromiseResult::Failed)
+                            Some(Failed)
                         }
                     };
 
@@ -216,7 +223,8 @@ impl<B: Backend + 'static> VmRunner<B> {
                         Ok(action_res) => {
                             result.push(action_res.clone());
                             if !action_res.success {
-                                Some(PromiseResult::Failed)
+                                self.refund_deposit(&p.predecessor_id, &deploy.deposit);
+                                Some(Failed)
                             } else if action_res.output_data.is_empty() {
                                 Some(PromiseResult::Empty)
                             } else {
@@ -224,13 +232,9 @@ impl<B: Backend + 'static> VmRunner<B> {
                             }
                         }
                         Err(err) => {
-                            if !deploy.deposit.is_empty() {
-                                // refund deposit
-                                self.api.add_balance(p.predecessor_id.to_vec(), deploy.deposit.to_vec());
-                                self.api.commit();
-                            }
+                            self.refund_deposit(&p.predecessor_id, &deploy.deposit);
                             result.push(Self::action_result_from_err(err.into(), p.receiver_id.clone(), p.action.clone(), gas_used, deploy.gas_limit));
-                            Some(PromiseResult::Failed)
+                            Some(Failed)
                         }
                     };
 

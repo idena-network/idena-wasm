@@ -10,7 +10,7 @@ use crate::memory::{read_region, read_u32, read_utf16_string, ref_to_u32, to_u32
 use crate::types::{ActionResult, GetIdentityAction, PromiseResult, ReadContractDataAction, ReadShardedDataAction};
 use crate::unwrap_or_return;
 
-const MAX_STORAGE_KEY_SIZE: usize = 32;
+const MAX_STORAGE_KEY_SIZE: usize = 128 * 1024;
 const MAX_ADDRESS_SIZE: usize = 20;
 const MAX_CODE_SIZE: usize = 1024 * 1024;
 const MAX_IDNA_SIZE: usize = 32;
@@ -502,6 +502,14 @@ pub fn keccak256<B:Backend>(env : &Env<B>, ptr : u32 ) -> VmResult<u32> {
     let hash_value = hash.0?;
     write_to_contract(env, &hash_value)
 }
+
+pub fn global_state<B:Backend>(env : &Env<B>) -> VmResult<u32> {
+    let global = env.backend.global_state();
+    process_gas_info(env, global.1)?;
+    let data = global.0?;
+    write_to_contract(env, &data)
+}
+
 
 
 

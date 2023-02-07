@@ -242,6 +242,11 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut UnmanagedVector, // keccak-256 hash of data
     ) -> i32,
+    pub global_state : extern "C" fn(
+        *const api_t,
+        *mut u64,
+        *mut UnmanagedVector, // keccak-256 hash of data
+    ) -> i32,
 }
 
 #[repr(C)]
@@ -730,6 +735,18 @@ impl Backend for apiWrapper {
         let go_result = (self.api.vtable.keccak256)(self.api.state, U8SliceView::new(Some(data)), &mut used_gas as *mut u64, &mut hash as *mut UnmanagedVector);
         check_go_result!(go_result, used_gas, "keccak256");
         let value = match hash.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(value), used_gas)
+    }
+
+    fn global_state(&self) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut data = UnmanagedVector::default();
+        let go_result = (self.api.vtable.global_state)(self.api.state,  &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        check_go_result!(go_result, used_gas, "global_state");
+        let value = match data.consume() {
             Some(v) => v,
             None => Vec::new()
         };
