@@ -333,6 +333,7 @@ impl<B: Backend + 'static> VmRunner<B> {
         unwrap_or_action_res!(self.deploy_with_env(env, module, input_action.clone(),  arg_bytes, gas_used), input_action, *gas_used, self.gas_limit, addr)
     }
     pub fn deploy_with_env(&self, env: Env<B>, module: Module, input_action: Action, arg_bytes: &[u8], gas_used: &mut u64) -> VmResult<ActionResult> {
+
         let args = convert_args(arg_bytes)?;
 
         let required_export = ["allocate", "deploy", "memory"];

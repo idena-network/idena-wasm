@@ -1,11 +1,11 @@
 use wasmer::wasmparser::Operator;
 
-pub const BASE_PROMISE_COST: u64 = 1000;
+pub const BASE_PROMISE_COST: u64 = 100000;
 
-pub const BASE_DEPLOY_COST: u64 = 30000;
-pub const BASE_CALL_COST: u64 = 3000;
+pub const BASE_DEPLOY_COST: u64 = 3000000;
+pub const BASE_CALL_COST: u64 = 100000;
 
-pub const BASE_BYTES_TO_HEX_COST :u64 = 1000;
+pub const BASE_BYTES_TO_HEX_COST :u64 = 10000;
 
 
 pub fn cost_function(operator: &Operator) -> u64 {
