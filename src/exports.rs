@@ -581,11 +581,11 @@ impl Backend for apiWrapper {
         (Ok(d), used_gas)
     }
 
-    fn commit(&self) -> BackendResult<()> {
+   /* fn commit(&self) -> BackendResult<()> {
         let go_result = (self.api.vtable.commit)(self.api.state);
         check_go_result!(go_result, 0, "commit");
         (Ok(()), 0)
-    }
+    }*/
 
     fn deduct_balance(&self, amount: IDNA) -> BackendResult<()> {
         let mut err = UnmanagedVector::default();

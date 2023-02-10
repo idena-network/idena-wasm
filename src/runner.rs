@@ -95,7 +95,7 @@ impl<B: Backend + 'static> VmRunner<B> {
         compiler_config.push_middleware(Arc::new(Gatekeeper::default()));
         let base = BaseTunables::for_target(&Target::default());
         let store = Store::new_with_tunables(&Universal::new(compiler_config).engine(), LimitingTunables::new(base, Pages(100)));
-        let env = Env::new(self.api, promise_result);
+        let env = Env::new(self.api, promise_result, self.gas_limit);
         let mut import_object = imports! {
         "env" => {
             "abort" => Function::new_native_with_env(&store, env.clone(), abort),
@@ -129,6 +129,9 @@ impl<B: Backend + 'static> VmRunner<B> {
             "block_header" =>  Function::new_native_with_env(&store, env.clone(), block_header),
             "keccak256" =>  Function::new_native_with_env(&store, env.clone(), keccak256),
             "global_state" =>  Function::new_native_with_env(&store, env.clone(), global_state),
+            "gas_limit" =>  Function::new_native_with_env(&store, env.clone(), gas_limit),
+            "gas_left" =>  Function::new_native_with_env(&store, env.clone(), gas_left),
+            "balance" =>  Function::new_native_with_env(&store, env.clone(), balance),
             }
         };
         let mut import_obj_debug = imports! {};
@@ -167,12 +170,11 @@ impl<B: Backend + 'static> VmRunner<B> {
         Ok(res?)
     }
 
-    pub fn refund_deposit(&self, dest : &Address, amount : &IDNA) -> VmResult<()> {
+    pub fn refund_deposit(&self, dest: &Address, amount: &IDNA) -> VmResult<()> {
         if !amount.is_empty() {
             self.api.add_balance(dest.to_vec(), amount.to_vec()).0?;
-            self.api.commit();
         }
-        return Ok(())
+        return Ok(());
     }
 
     pub fn execute_promises(&self, env: Env<B>) -> Vec<ActionResult> {
@@ -308,8 +310,7 @@ impl<B: Backend + 'static> VmRunner<B> {
                     let action_result = self.apply_function_call(self.contact_addr.clone(), &call, promise_result, &mut gas_used, true);
                     if action_result.is_err() && !call.deposit.is_empty() {
                         // refund deposit
-                        self.api.add_balance(p.predecessor_id.to_vec(), call.deposit.to_vec());
-                        self.api.commit();
+                        self.refund_deposit(&p.predecessor_id, &call.deposit);
                     }
                     result.push(action_result.unwrap_or_else(|err| Self::action_result_from_err(err, self.contact_addr.clone(), action.clone(), gas_used, call.gas_limit)));
                 }

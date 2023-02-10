@@ -56,7 +56,7 @@ pub trait Backend: Copy + Clone + Send {
     fn call(&self, addr: Address, method: &[u8], args: &[u8], amount: &[u8], gas_limit: u64, invocation_ctx: &[u8]) -> BackendResult<ActionResult>;
     fn caller(&self) -> BackendResult<Vec<u8>>;
     fn original_caller(&self) -> BackendResult<Vec<u8>>;
-    fn commit(&self) -> BackendResult<()>;
+    //fn commit(&self) -> BackendResult<()>;
     fn deduct_balance(&self, amount: IDNA) -> BackendResult<()>;
     fn add_balance(&self, to: Address, amount: IDNA) -> BackendResult<()>;
     fn own_addr(&self) -> BackendResult<Address>;
@@ -169,11 +169,6 @@ impl Backend for MockBackend {
     }
     fn original_caller(&self) -> BackendResult<Vec<u8>> {
         todo!()
-    }
-
-    fn commit(&self) -> BackendResult<()> {
-        println!("called commit");
-        (Ok(()), 0)
     }
 
     fn deduct_balance(&self, amount: IDNA) -> BackendResult<()> {

@@ -22,15 +22,16 @@ pub struct Env<B: Backend> {
     pub backend: B,
     data: Arc<RwLock<ContextData>>,
     pub promise_result: Option<PromiseResult>,
+    gas_limit : u64,
 }
 
-
 impl<B: Backend> Env<B> {
-    pub fn new(api: B, promise_res: Option<PromiseResult>) -> Self {
+    pub fn new(api: B, promise_res: Option<PromiseResult>, gas_limit : u64) -> Self {
         Env {
             backend: api,
             data: Arc::new(RwLock::new(ContextData::new())),
             promise_result: promise_res,
+            gas_limit : gas_limit
         }
     }
 
@@ -79,6 +80,10 @@ impl<B: Backend> Env<B> {
             })
         })
             .expect("Wasmer instance is not set. This is a bug in the lifecycle.")
+    }
+
+    pub fn gas_limit(&self) -> u64 {
+        return self.gas_limit;
     }
 
     pub fn set_gas_left(&self, new_value: u64) {
@@ -253,6 +258,7 @@ impl<B: Backend> Clone for Env<B> {
             backend: self.backend,
             data: self.data.clone(),
             promise_result: self.promise_result.clone(),
+            gas_limit : self.gas_limit
         }
     }
 }

@@ -511,6 +511,15 @@ pub fn global_state<B:Backend>(env : &Env<B>) -> VmResult<u32> {
 }
 
 
+pub fn gas_limit<B:Backend>(env : &Env<B>) -> VmResult<u64> {
+    Ok(env.gas_limit())
+}
+
+pub fn gas_left<B:Backend>(env : &Env<B>) -> VmResult<u64> {
+    Ok(env.get_gas_left())
+}
+
+
 
 
 
