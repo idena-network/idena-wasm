@@ -308,7 +308,7 @@ impl<B: Backend + 'static> VmRunner<B> {
                 Action::FunctionCall(ref call) => {
                     let mut gas_used = 0;
                     let action_result = self.apply_function_call(self.contact_addr.clone(), &call, promise_result, &mut gas_used, true);
-                    if action_result.is_err() && !call.deposit.is_empty() {
+                    if (action_result.is_err() || !action_result.as_ref().unwrap().success) && !call.deposit.is_empty(){
                         // refund deposit
                         self.refund_deposit(&p.predecessor_id, &call.deposit);
                     }
