@@ -1,17 +1,14 @@
-use std::{mem, slice, str};
-
-use errno::{Errno, set_errno};
+use std::{mem, slice};
 use protobuf::Message;
 
 use crate::{check_go_result, proto};
 use crate::args::convert_args;
 use crate::backend::{Backend, BackendError, BackendResult};
 use crate::costs::{BASE_CALL_COST, BASE_DEPLOY_COST};
-use crate::environment::Env;
 use crate::errors::VmError;
-use crate::memory::{ByteSliceView, VmResult};
+use crate::memory::{ByteSliceView};
 use crate::runner::VmRunner;
-use crate::types::{Action, ActionResult, Address, IDNA, InvocationContext, PromiseResult};
+use crate::types::{Action, ActionResult, Address, IDNA, InvocationContext};
 
 #[repr(C)]
 pub struct gas_meter_t {
@@ -84,20 +81,9 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut u64, // result
     ) -> i32,
-    pub identity_state: extern "C" fn(
+    pub burn: extern "C" fn(
         *const api_t,
-        U8SliceView, // addr
-        *mut u64,
-        *mut u8,
-    ) -> i32,
-    pub pub_key: extern "C" fn(
-        *const api_t,
-        U8SliceView, // addr
-        *mut u64,
-        *mut UnmanagedVector, // result
-    ) -> i32,
-    pub burn_all: extern "C" fn(
-        *const api_t,
+        U8SliceView, // amount
         *mut u64,
     ) -> i32,
     pub epoch: extern "C" fn(
@@ -312,14 +298,6 @@ impl UnmanagedVector {
         }
     }
 
-    pub fn is_none(&self) -> bool {
-        self.is_none
-    }
-
-    pub fn is_some(&self) -> bool {
-        !self.is_none()
-    }
-
     /// Takes this UnmanagedVector and turns it into a regular, managed Rust vector.
     /// Calling this on two copies of UnmanagedVector leads to double free crashes.
     pub fn consume(self) -> Option<Vec<u8>> {
@@ -363,10 +341,11 @@ pub extern "C" fn new_unmanaged_vector(
 #[derive(Copy, Clone)]
 pub struct GoApi {
     pub state: *const api_t,
-    pub gasMeter: *const gas_meter_t,
+    pub gas_meter: *const gas_meter_t,
     pub vtable: GoApi_vtable,
 }
 
+#[allow(non_camel_case_types)]
 pub struct apiWrapper {
     api: GoApi,
 }
@@ -390,8 +369,8 @@ impl Clone for apiWrapper {
 }
 
 impl Backend for apiWrapper {
-    fn set_remaining_gas(&self, gasLimit: u64) -> BackendResult<()> {
-        let go_result = (self.api.vtable.set_remaining_gas)(self.api.state, gasLimit);
+    fn set_remaining_gas(&self, gas_limit: u64) -> BackendResult<()> {
+        let go_result = (self.api.vtable.set_remaining_gas)(self.api.state, gas_limit);
         check_go_result!(go_result, 0, "set_remaining_gas");
         (Ok(()), 0)
     }
@@ -479,30 +458,10 @@ impl Backend for apiWrapper {
         (Ok(network_size), used_gas)
     }
 
-    fn identity_state(&self, addr: Address) -> BackendResult<u8> {
+    fn burn(&self, amount : IDNA) -> BackendResult<()> {
         let mut used_gas = 0_u64;
-        let mut state = 0_u8;
-        let go_result = (self.api.vtable.identity_state)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut state as *mut u8);
-        check_go_result!(go_result, used_gas, "identity_state");
-        (Ok(state), used_gas)
-    }
-
-    fn pub_key(&self, addr: Address) -> BackendResult<Vec<u8>> {
-        let mut used_gas = 0_u64;
-        let mut data = UnmanagedVector::default();
-        let go_result = (self.api.vtable.pub_key)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
-        check_go_result!(go_result, used_gas, "pub_key");
-        let pub_key = match data.consume() {
-            Some(v) => v,
-            None => Vec::new()
-        };
-        (Ok(pub_key), used_gas)
-    }
-
-    fn burn_all(&self) -> BackendResult<()> {
-        let mut used_gas = 0_u64;
-        let go_result = (self.api.vtable.burn_all)(self.api.state, &mut used_gas as *mut u64);
-        check_go_result!(go_result, used_gas, "burn_all");
+        let go_result = (self.api.vtable.burn)(self.api.state, U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64);
+        check_go_result!(go_result, used_gas, "burn");
         (Ok(()), used_gas)
     }
 
@@ -520,14 +479,6 @@ impl Backend for apiWrapper {
         let go_result = (self.api.vtable.epoch)(self.api.state, &mut used_gas as *mut u64, &mut epoch as *mut u16);
         check_go_result!(go_result, used_gas, "epoch");
         (Ok(epoch), used_gas)
-    }
-
-    fn delegatee(&self, addr: Address) -> BackendResult<Option<Address>> {
-        let mut used_gas = 0_u64;
-        let mut data = UnmanagedVector::default();
-        let go_result = (self.api.vtable.delegatee)(self.api.state, U8SliceView::new(Some(&addr)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
-        check_go_result!(go_result, used_gas, "delegatee");
-        (Ok(data.consume()), used_gas)
     }
 
     fn identity(&self, addr: Address) -> BackendResult<Option<Vec<u8>>> {
@@ -552,7 +503,7 @@ impl Backend for apiWrapper {
         };
         let res = match proto::models::ActionResult::parse_from_bytes(&raw_data) {
             Ok(m) => m,
-            Err(e) => return (Err(BackendError::new("failed to parse function result")), used_gas)
+            Err(_e) => return (Err(BackendError::new("failed to parse function result")), used_gas)
         };
         (Ok(res.into()), used_gas)
     }
@@ -598,18 +549,17 @@ impl Backend for apiWrapper {
             };
             let s = match String::from_utf8(err_data) {
                 Ok(v) => v,
-                Err(e) => "cannot parse backend error".to_string(),
+                Err(_e) => "cannot parse backend error".to_string(),
             };
             return (Err(BackendError::new(format!("backend error: {}", s))), used_gas);
         }
         (Ok(()), used_gas)
     }
 
-    fn add_balance(&self, to: Address, amount: IDNA) -> BackendResult<()> {
+    fn add_balance(&self, to: Address, amount: IDNA) -> u64 {
         let mut used_gas = 0_u64;
-        let go_result = (self.api.vtable.add_balance)(self.api.state, U8SliceView::new(Some(&to)), U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64);
-        check_go_result!(go_result, used_gas, "add_balance");
-        (Ok(()), used_gas)
+        (self.api.vtable.add_balance)(self.api.state, U8SliceView::new(Some(&to)), U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64);
+        used_gas
     }
 
     fn own_addr(&self) -> BackendResult<Address> {
@@ -661,7 +611,7 @@ impl Backend for apiWrapper {
         };
         let res = match proto::models::ActionResult::parse_from_bytes(&raw_data) {
             Ok(m) => m,
-            Err(e) => return (Err(BackendError::new("failed to parse function result")), used_gas)
+            Err(_e) => return (Err(BackendError::new("failed to parse function result")), used_gas)
         };
         (Ok(res.into()), used_gas)
     }
@@ -860,7 +810,6 @@ pub extern "C" fn execute(api: GoApi, code: ByteSliceView,
                           gas_limit: u64,
                           gas_used: &mut u64,
                           action_result: &mut UnmanagedVector,
-                          err_msg: Option<&mut UnmanagedVector>,
                           is_debug: bool) -> u8 {
     let res = do_execute(api, code, method_name, args, invocation_context, contract_addr, gas_limit, gas_used, is_debug);
     let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);
@@ -876,7 +825,6 @@ pub extern "C" fn deploy(api: GoApi, code: ByteSliceView,
                          gas_limit: u64,
                          gas_used: &mut u64,
                          action_result: &mut UnmanagedVector,
-                         err_msg: Option<&mut UnmanagedVector>,
                          is_debug: bool) -> u8 {
     let res = do_deploy(api, code, args, contract_addr, gas_limit, gas_used, is_debug);
     let proto_action = Into::<crate::proto::models::ActionResult>::into(&res);

@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 use wasmer::wasmparser::Operator;
 
 pub const BASE_PROMISE_COST: u64 = 100000;

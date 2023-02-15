@@ -1,5 +1,3 @@
-#![macro_escape]
-
 #[macro_export]
 macro_rules! unwrap_or_return {
     ( $e:expr, $gas:expr ) => {

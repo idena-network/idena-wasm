@@ -1,20 +1,19 @@
-use std::borrow::Borrow;
-use std::ops::Add;
 use std::ptr::NonNull;
 use std::sync::Arc;
 
 use indexmap::map::Iter;
-use protobuf::{Message, RepeatedField, SingularPtrField};
-use wasmer::{BaseTunables, ChainableNamedResolver, CompilerConfig, Exportable, ExportIndex, Exports, Function, ImportObject, imports, Instance, Module, Pages, Resolver, Singlepass, Store, Target, Val, Value};
-use wasmer::wasmparser::Operator;
+use protobuf::{Message};
+use wasmer::{
+    imports, BaseTunables, ChainableNamedResolver, CompilerConfig, ExportIndex,
+    Function, Instance, Module, Pages, Singlepass, Store, Target,
+    Val, Value,
+};
 use wasmer_engine_universal::Universal;
 use wasmer_middlewares::Metering;
-use wasmer_middlewares::metering::{get_remaining_points, MeteringPoints};
 use wasmer_types::ModuleInfo;
 
-use crate::{unwrap_or_action_res, unwrap_or_return};
 use crate::args::convert_args;
-use crate::backend::{Backend, BackendError, BackendResult};
+use crate::backend::{Backend, BackendResult};
 use crate::costs::*;
 use crate::environment::Env;
 use crate::errors::VmError;
@@ -23,8 +22,12 @@ use crate::imports::*;
 use crate::limiting_tunables::LimitingTunables;
 use crate::memory::{read_region, VmResult};
 use crate::proto::models::{InvocationContext as protoContext, ProtoArgs_Argument};
-use crate::types::{Action, ActionResult, Address, DeployContractAction, FunctionCallAction, Gas, IDNA, InvocationContext, Promise, PromiseResult, ReadContractDataAction, ReadShardedDataAction};
 use crate::types::PromiseResult::Failed;
+use crate::types::{
+    Action, ActionResult, Address, DeployContractAction, FunctionCallAction, Gas,
+    InvocationContext, Promise, PromiseResult, ReadShardedDataAction, IDNA,
+};
+use crate::unwrap_or_action_res;
 
 pub struct VmRunner<B: Backend + 'static> {
     pub contact_addr: Address,
@@ -35,7 +38,13 @@ pub struct VmRunner<B: Backend + 'static> {
 }
 
 impl<B: Backend + 'static> VmRunner<B> {
-    pub fn new(api: B, contract_addr: Address, gas_limit: Gas, ctx: Option<InvocationContext>, is_debug: bool) -> Self {
+    pub fn new(
+        api: B,
+        contract_addr: Address,
+        gas_limit: Gas,
+        ctx: Option<InvocationContext>,
+        is_debug: bool,
+    ) -> Self {
         VmRunner {
             contact_addr: contract_addr,
             api,
@@ -44,9 +53,14 @@ impl<B: Backend + 'static> VmRunner<B> {
             is_debug,
         }
     }
-
-    fn prepare_arguments(&self, env: &Env<B>, info: &ModuleInfo, method: &String, args: protobuf::RepeatedField<ProtoArgs_Argument>) -> VmResult<Vec<Val>> {
-        let mut params_cnt = 0;
+    fn prepare_arguments(
+        &self,
+        env: &Env<B>,
+        info: &ModuleInfo,
+        method: &String,
+        args: protobuf::RepeatedField<ProtoArgs_Argument>,
+    ) -> VmResult<Vec<Val>> {
+        let params_cnt: usize;
 
         if self.is_debug {
             let exp_it: Iter<'_, String, ExportIndex> = info.exports.iter();
@@ -63,7 +77,7 @@ impl<B: Backend + 'static> VmRunner<B> {
                 params_cnt = sign.params().len();
             }
             None => return Err(VmError::custom("method is not found")),
-            _ => return Err(VmError::custom("method is not found"))
+            _ => return Err(VmError::custom("method is not found")),
         };
 
         if params_cnt < args.len() {
@@ -78,7 +92,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             }
             match write_to_contract(&env.clone(), v.get_value()) {
                 Ok(p) => wasm_args.push(Value::I32(i32::try_from(p).unwrap())),
-                Err(err) => return Err(err)
+                Err(err) => return Err(err),
             }
         }
 
@@ -88,15 +102,22 @@ impl<B: Backend + 'static> VmRunner<B> {
         Ok(wasm_args)
     }
 
-    fn build_env(&self, code: Vec<u8>, promise_result: Option<PromiseResult>) -> VmResult<(Env<B>, Module, Box<Instance>)> {
+    fn build_env(
+        &self,
+        code: Vec<u8>,
+        promise_result: Option<PromiseResult>,
+    ) -> VmResult<(Env<B>, Module)> {
         let metering = Arc::new(Metering::new(self.gas_limit, cost_function));
         let mut compiler_config = Singlepass::default();
         compiler_config.push_middleware(metering);
         compiler_config.push_middleware(Arc::new(Gatekeeper::default()));
         let base = BaseTunables::for_target(&Target::default());
-        let store = Store::new_with_tunables(&Universal::new(compiler_config).engine(), LimitingTunables::new(base, Pages(100)));
+        let store = Store::new_with_tunables(
+            &Universal::new(compiler_config).engine(),
+            LimitingTunables::new(base, Pages(100)),
+        );
         let env = Env::new(self.api, promise_result, self.gas_limit);
-        let mut import_object = imports! {
+        let import_object = imports! {
         "env" => {
             "abort" => Function::new_native_with_env(&store, env.clone(), abort),
             "panic" => Function::new_native_with_env(&store, env.clone(), panic),
@@ -132,15 +153,16 @@ impl<B: Backend + 'static> VmRunner<B> {
             "gas_limit" =>  Function::new_native_with_env(&store, env.clone(), gas_limit),
             "gas_left" =>  Function::new_native_with_env(&store, env.clone(), gas_left),
             "balance" =>  Function::new_native_with_env(&store, env.clone(), balance),
+            "burn" =>  Function::new_native_with_env(&store, env.clone(), burn),
             }
         };
         let mut import_obj_debug = imports! {};
         if self.is_debug {
             import_obj_debug = imports! {
-            "env" => {
-                   "debug" =>  Function::new_native_with_env(&store, env.clone(), debug)
-            }
-        };
+                "env" => {
+                       "debug" =>  Function::new_native_with_env(&store, env.clone(), debug)
+                }
+            };
         }
         let resolver = import_obj_debug.chain_back(import_object);
         let module = match Module::new(&store, code) {
@@ -156,25 +178,40 @@ impl<B: Backend + 'static> VmRunner<B> {
 
         let instance_ptr = NonNull::from(wasmer_instance.as_ref());
         env.set_wasmer_instance(Some(instance_ptr));
-        Ok((env, module, wasmer_instance))
+        Ok((env, module))
     }
 
-
-    pub fn apply_function_call(&self, contract: Address, action: &FunctionCallAction, promise_result: Option<PromiseResult>, gas_used: &mut u64, is_callback: bool) -> VmResult<ActionResult> {
+    pub fn apply_function_call(
+        &self,
+        contract: Address,
+        action: &FunctionCallAction,
+        promise_result: Option<PromiseResult>,
+        gas_used: &mut u64,
+        is_callback: bool,
+    ) -> VmResult<ActionResult> {
         let ctx = InvocationContext {
             is_callback: is_callback,
             promise_result: promise_result,
         };
-        let (res, gas) = self.api.call(contract, action.method_name.as_bytes(), &action.args, &action.deposit, action.gas_limit, &Into::<protoContext>::into(ctx).write_to_bytes().unwrap_or_default());
+        let (res, gas) = self.api.call(
+            contract,
+            action.method_name.as_bytes(),
+            &action.args,
+            &action.deposit,
+            action.gas_limit,
+            &Into::<protoContext>::into(ctx)
+                .write_to_bytes()
+                .unwrap_or_default(),
+        );
         *gas_used = gas;
         Ok(res?)
     }
 
-    pub fn refund_deposit(&self, dest: &Address, amount: &IDNA) -> VmResult<()> {
+    pub fn refund_deposit(&self, dest: &Address, amount: &IDNA) -> () {
         if !amount.is_empty() {
-            self.api.add_balance(dest.to_vec(), amount.to_vec()).0?;
+            self.api.add_balance(dest.to_vec(), amount.to_vec());
         }
-        return Ok(());
+        ()
     }
 
     pub fn execute_promises(&self, env: Env<B>) -> Vec<ActionResult> {
@@ -192,7 +229,13 @@ impl<B: Backend + 'static> VmRunner<B> {
             match &p.action {
                 Action::FunctionCall(call) => {
                     let mut gas_used = 0;
-                    let action_result = self.apply_function_call(p.receiver_id.to_vec(), call, None, &mut gas_used, false);
+                    let action_result = self.apply_function_call(
+                        p.receiver_id.to_vec(),
+                        call,
+                        None,
+                        &mut gas_used,
+                        false,
+                    );
 
                     let promise_result = match action_result {
                         Ok(action_res) => {
@@ -208,7 +251,13 @@ impl<B: Backend + 'static> VmRunner<B> {
                         }
                         Err(err) => {
                             self.refund_deposit(&p.predecessor_id, &call.deposit);
-                            result.push(Self::action_result_from_err(err, p.receiver_id.clone(), p.action.clone(), gas_used, call.gas_limit));
+                            result.push(Self::action_result_from_err(
+                                err,
+                                p.receiver_id.clone(),
+                                p.action.clone(),
+                                gas_used,
+                                call.gas_limit,
+                            ));
                             Some(Failed)
                         }
                     };
@@ -216,10 +265,14 @@ impl<B: Backend + 'static> VmRunner<B> {
                     self.run_callback(&mut result, p, promise_result)
                 }
                 Action::DeployContract(deploy) => {
-                    let mut gas_used = 0;
-
-                    let (action_result, gas) = self.api.deploy(&deploy.code, &deploy.args, &deploy.nonce, &deploy.deposit, deploy.gas_limit);
-                    gas_used = gas;
+                    let (action_result, gas) = self.api.deploy(
+                        &deploy.code,
+                        &deploy.args,
+                        &deploy.nonce,
+                        &deploy.deposit,
+                        deploy.gas_limit,
+                    );
+                    let gas_used = gas;
 
                     let promise_result = match action_result {
                         Ok(action_res) => {
@@ -235,7 +288,13 @@ impl<B: Backend + 'static> VmRunner<B> {
                         }
                         Err(err) => {
                             self.refund_deposit(&p.predecessor_id, &deploy.deposit);
-                            result.push(Self::action_result_from_err(err.into(), p.receiver_id.clone(), p.action.clone(), gas_used, deploy.gas_limit));
+                            result.push(Self::action_result_from_err(
+                                err.into(),
+                                p.receiver_id.clone(),
+                                p.action.clone(),
+                                gas_used,
+                                deploy.gas_limit,
+                            ));
                             Some(Failed)
                         }
                     };
@@ -244,35 +303,60 @@ impl<B: Backend + 'static> VmRunner<B> {
                 }
                 Action::Transfer(t) => {
                     //todo : handle result
-                    self.api.add_balance(p.receiver_id.clone(), t.amount.to_vec());
+                    self.api
+                        .add_balance(p.receiver_id.clone(), t.amount.to_vec());
                 }
-                Action::ReadShardedData(read_shared_data_action) => {
-                    match read_shared_data_action {
-                        ReadShardedDataAction::ReadContractData(req) => {
-                            let action_result = self.api.read_contract_data(p.receiver_id.clone(), req.key.clone());
-                            let promise_result = self.execute_read_sharded_data(action_result, p.receiver_id.clone(), &mut result, p.action.clone(), req.gas_limit);
-                            self.run_callback(&mut result, p, promise_result)
-                        }
-                        ReadShardedDataAction::GetIdentity(req)
-                        => {
-                            let action_result = self.api.identity(req.addr.clone());
-                            let promise_result = self.execute_read_sharded_data(action_result, p.receiver_id.clone(), &mut result, p.action.clone(), req.gas_limit);
-                            self.run_callback(&mut result, p, promise_result)
-                        }
+                Action::ReadShardedData(read_shared_data_action) => match read_shared_data_action {
+                    ReadShardedDataAction::ReadContractData(req) => {
+                        let action_result = self
+                            .api
+                            .read_contract_data(p.receiver_id.clone(), req.key.clone());
+                        let promise_result = self.execute_read_sharded_data(
+                            action_result,
+                            p.receiver_id.clone(),
+                            &mut result,
+                            p.action.clone(),
+                            req.gas_limit,
+                        );
+                        self.run_callback(&mut result, p, promise_result)
                     }
-                }
+                    ReadShardedDataAction::GetIdentity(req) => {
+                        let action_result = self.api.identity(req.addr.clone());
+                        let promise_result = self.execute_read_sharded_data(
+                            action_result,
+                            p.receiver_id.clone(),
+                            &mut result,
+                            p.action.clone(),
+                            req.gas_limit,
+                        );
+                        self.run_callback(&mut result, p, promise_result)
+                    }
+                },
                 _ => {}
             };
-        };
+        }
         result
     }
 
-    fn execute_read_sharded_data(&self, action_res: BackendResult<Option<Vec<u8>>>, address: Address, result: &mut Vec<ActionResult>, action: Action, gas_limit: u64) -> Option<PromiseResult> {
+    fn execute_read_sharded_data(
+        &self,
+        action_res: BackendResult<Option<Vec<u8>>>,
+        address: Address,
+        result: &mut Vec<ActionResult>,
+        action: Action,
+        gas_limit: u64,
+    ) -> Option<PromiseResult> {
         let (action_result, gas) = action_res;
-        let mut gas_used = gas;
-        let mut promise_result: Option<PromiseResult>;
+        let gas_used = gas;
+        let promise_result: Option<PromiseResult>;
         if gas_used > gas_limit {
-            let res = Self::action_result_from_err(VmError::OutOfGas, address, action, gas_limit, gas_limit);
+            let res = Self::action_result_from_err(
+                VmError::OutOfGas,
+                address,
+                action,
+                gas_limit,
+                gas_limit,
+            );
             result.push(res);
             promise_result = Some(PromiseResult::Failed)
         } else {
@@ -281,17 +365,31 @@ impl<B: Backend + 'static> VmRunner<B> {
                     let res = match data {
                         None => {
                             promise_result = Some(PromiseResult::Empty);
-                            Self::action_result_from_success(action, address, vec![], gas_used, gas_limit)
+                            Self::action_result_from_success(
+                                action,
+                                address,
+                                vec![],
+                                gas_used,
+                                gas_limit,
+                            )
                         }
                         Some(v) => {
                             promise_result = Some(PromiseResult::Value(v.clone()));
-                            Self::action_result_from_success(action, address, v, gas_used, gas_limit)
+                            Self::action_result_from_success(
+                                action, address, v, gas_used, gas_limit,
+                            )
                         }
                     };
                     result.push(res);
                 }
                 Err(err) => {
-                    let res = Self::action_result_from_err(err.into(), address, action, gas_used, gas_limit);
+                    let res = Self::action_result_from_err(
+                        err.into(),
+                        address,
+                        action,
+                        gas_used,
+                        gas_limit,
+                    );
                     result.push(res);
                     promise_result = Some(PromiseResult::Failed);
                 }
@@ -300,19 +398,39 @@ impl<B: Backend + 'static> VmRunner<B> {
         promise_result
     }
 
-
-    fn run_callback(&self, result: &mut Vec<ActionResult>, p: &Promise, promise_result: Option<PromiseResult>) {
+    fn run_callback(
+        &self,
+        result: &mut Vec<ActionResult>,
+        p: &Promise,
+        promise_result: Option<PromiseResult>,
+    ) {
         if p.action_callback.is_some() {
             let action = p.action_callback.as_ref().unwrap().clone();
             match action {
                 Action::FunctionCall(ref call) => {
                     let mut gas_used = 0;
-                    let action_result = self.apply_function_call(self.contact_addr.clone(), &call, promise_result, &mut gas_used, true);
-                    if (action_result.is_err() || !action_result.as_ref().unwrap().success) && !call.deposit.is_empty(){
+                    let action_result = self.apply_function_call(
+                        self.contact_addr.clone(),
+                        &call,
+                        promise_result,
+                        &mut gas_used,
+                        true,
+                    );
+                    if (action_result.is_err() || !action_result.as_ref().unwrap().success)
+                        && !call.deposit.is_empty()
+                    {
                         // refund deposit
                         self.refund_deposit(&p.predecessor_id, &call.deposit);
                     }
-                    result.push(action_result.unwrap_or_else(|err| Self::action_result_from_err(err, self.contact_addr.clone(), action.clone(), gas_used, call.gas_limit)));
+                    result.push(action_result.unwrap_or_else(|err| {
+                        Self::action_result_from_err(
+                            err,
+                            self.contact_addr.clone(),
+                            action.clone(),
+                            gas_used,
+                            call.gas_limit,
+                        )
+                    }));
                 }
                 _ => unreachable!(),
             };
@@ -328,12 +446,36 @@ impl<B: Backend + 'static> VmRunner<B> {
             code: vec![], // drop code
         });
         let addr = self.contact_addr.clone();
-        let (env, module, instance) = unwrap_or_action_res!(self.build_env(code, None), input_action, *gas_used, self.gas_limit, addr);
-        unwrap_or_action_res!(process_gas_info(&env, BASE_DEPLOY_COST), input_action, *gas_used, self.gas_limit, self.contact_addr.clone());
-        unwrap_or_action_res!(self.deploy_with_env(env, module, input_action.clone(),  arg_bytes, gas_used), input_action, *gas_used, self.gas_limit, addr)
+        let (env, module) = unwrap_or_action_res!(
+            self.build_env(code, None),
+            input_action,
+            *gas_used,
+            self.gas_limit,
+            addr
+        );
+        unwrap_or_action_res!(
+            process_gas_info(&env, BASE_DEPLOY_COST),
+            input_action,
+            *gas_used,
+            self.gas_limit,
+            self.contact_addr.clone()
+        );
+        unwrap_or_action_res!(
+            self.deploy_with_env(env, module, input_action.clone(), arg_bytes, gas_used),
+            input_action,
+            *gas_used,
+            self.gas_limit,
+            addr
+        )
     }
-    pub fn deploy_with_env(&self, env: Env<B>, module: Module, input_action: Action, arg_bytes: &[u8], gas_used: &mut u64) -> VmResult<ActionResult> {
-
+    pub fn deploy_with_env(
+        &self,
+        env: Env<B>,
+        module: Module,
+        input_action: Action,
+        arg_bytes: &[u8],
+        gas_used: &mut u64,
+    ) -> VmResult<ActionResult> {
         let args = convert_args(arg_bytes)?;
 
         let required_export = ["allocate", "deploy", "memory"];
@@ -341,24 +483,45 @@ impl<B: Backend + 'static> VmRunner<B> {
         for export in required_export {
             match module_info.exports.get(export) {
                 Some(_) => continue,
-                None => return Err(VmError::custom(format!("not found required export: {}", export)))
+                None => {
+                    return Err(VmError::custom(format!(
+                        "not found required export: {}",
+                        export
+                    )))
+                }
             }
         }
 
-        let wasm_args = self.prepare_arguments(&env.clone(), module.info(), &"deploy".to_string(), args)?;
+        let wasm_args =
+            self.prepare_arguments(&env.clone(), module.info(), &"deploy".to_string(), args)?;
 
         let res = env.call_function("deploy", &wasm_args);
 
         *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
 
         if res.is_err() {
-            return Ok(Self::action_result_from_err(res.err().unwrap(), self.contact_addr.clone(), input_action, *gas_used, self.gas_limit));
+            return Ok(Self::action_result_from_err(
+                res.err().unwrap(),
+                self.contact_addr.clone(),
+                input_action,
+                *gas_used,
+                self.gas_limit,
+            ));
         }
 
-        let mut res = Self::action_result_from_success(input_action, self.contact_addr.clone(), vec![], *gas_used, self.gas_limit);
+        let mut res = Self::action_result_from_success(
+            input_action,
+            self.contact_addr.clone(),
+            vec![],
+            *gas_used,
+            self.gas_limit,
+        );
         res.append_sub_action_results(self.execute_promises(env));
 
-        let gas_refund = res.sub_action_results.iter().fold(0, |a, x| a + x.remaining_gas);
+        let gas_refund = res
+            .sub_action_results
+            .iter()
+            .fold(0, |a, x| a + x.remaining_gas);
         if gas_refund > 0 {
             *gas_used -= gas_refund;
         }
@@ -367,7 +530,13 @@ impl<B: Backend + 'static> VmRunner<B> {
         Ok(res)
     }
 
-    pub fn execute(self, code: Vec<u8>, method: &String, arg_bytes: &[u8], gas_used: &mut u64) -> ActionResult {
+    pub fn execute(
+        self,
+        code: Vec<u8>,
+        method: &String,
+        arg_bytes: &[u8],
+        gas_used: &mut u64,
+    ) -> ActionResult {
         let input_action = Action::FunctionCall(FunctionCallAction {
             gas_limit: self.gas_limit,
             deposit: vec![],
@@ -375,18 +544,54 @@ impl<B: Backend + 'static> VmRunner<B> {
             method_name: method.to_string(),
         });
         let invocation_ctx = self.ctx.clone().unwrap_or_default();
-        let (env, module, instance) = unwrap_or_action_res!(self.build_env(code, invocation_ctx.promise_result),
-            input_action,  *gas_used, self.gas_limit,  self.contact_addr.clone());
-        unwrap_or_action_res!(process_gas_info(&env, BASE_CALL_COST), input_action, *gas_used, self.gas_limit, self.contact_addr.clone());
-        unwrap_or_action_res!(self.execute_with_env(env, module, input_action.clone(), method, arg_bytes, gas_used, invocation_ctx.is_callback), input_action, *gas_used, self.gas_limit,  self.contact_addr.clone())
+        let (env, module) = unwrap_or_action_res!(
+            self.build_env(code, invocation_ctx.promise_result),
+            input_action,
+            *gas_used,
+            self.gas_limit,
+            self.contact_addr.clone()
+        );
+        unwrap_or_action_res!(
+            process_gas_info(&env, BASE_CALL_COST),
+            input_action,
+            *gas_used,
+            self.gas_limit,
+            self.contact_addr.clone()
+        );
+        unwrap_or_action_res!(
+            self.execute_with_env(
+                env,
+                module,
+                input_action.clone(),
+                method,
+                arg_bytes,
+                gas_used,
+                invocation_ctx.is_callback
+            ),
+            input_action,
+            *gas_used,
+            self.gas_limit,
+            self.contact_addr.clone()
+        )
     }
 
-    pub fn execute_with_env(&self, env: Env<B>, module: Module, input_action: Action, method: &String, arg_bytes: &[u8], gas_used: &mut u64, is_callback: bool) -> VmResult<ActionResult> {
+    pub fn execute_with_env(
+        &self,
+        env: Env<B>,
+        module: Module,
+        input_action: Action,
+        method: &String,
+        arg_bytes: &[u8],
+        gas_used: &mut u64,
+        is_callback: bool,
+    ) -> VmResult<ActionResult> {
         if method == "deploy" {
             return Err(VmError::custom("direct call to deploy is forbidden'"));
         }
         if !is_callback && method.starts_with("_") {
-            return Err(VmError::custom("direct call to promise callback is forbidden'"));
+            return Err(VmError::custom(
+                "direct call to promise callback is forbidden'",
+            ));
         }
 
         let args = convert_args(arg_bytes)?;
@@ -400,11 +605,12 @@ impl<B: Backend + 'static> VmRunner<B> {
                     ptr = match val[0] {
                         Value::I32(v) => v,
                         Value::I64(v) => v as i32,
-                        _ => 0
+                        _ => 0,
                     };
                 }
                 if ptr > 0 {
-                    output_data = read_region(&env.memory(), ptr as u32, MAX_RETURN_VALUE_SIZE).unwrap_or(vec![]);
+                    output_data = read_region(&env.memory(), ptr as u32, MAX_RETURN_VALUE_SIZE)
+                        .unwrap_or(vec![]);
                 }
                 *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
                 Ok(())
@@ -416,13 +622,28 @@ impl<B: Backend + 'static> VmRunner<B> {
         };
 
         if res.is_err() {
-            return Ok(Self::action_result_from_err(res.err().unwrap(), self.contact_addr.clone(), input_action, *gas_used, self.gas_limit));
+            return Ok(Self::action_result_from_err(
+                res.err().unwrap(),
+                self.contact_addr.clone(),
+                input_action,
+                *gas_used,
+                self.gas_limit,
+            ));
         }
 
-        let mut res = Self::action_result_from_success(input_action, self.contact_addr.clone(), output_data, *gas_used, self.gas_limit);
+        let mut res = Self::action_result_from_success(
+            input_action,
+            self.contact_addr.clone(),
+            output_data,
+            *gas_used,
+            self.gas_limit,
+        );
         res.append_sub_action_results(self.execute_promises(env));
 
-        let gas_refund = res.sub_action_results.iter().fold(0, |a, x| a + x.remaining_gas);
+        let gas_refund = res
+            .sub_action_results
+            .iter()
+            .fold(0, |a, x| a + x.remaining_gas);
         if gas_refund > 0 {
             *gas_used -= gas_refund;
         }
@@ -434,8 +655,13 @@ impl<B: Backend + 'static> VmRunner<B> {
         Ok(res)
     }
 
-
-    fn action_result_from_err(err: VmError, contract: Address, input_action: Action, gas_used: u64, gas_limit: u64) -> ActionResult {
+    fn action_result_from_err(
+        err: VmError,
+        contract: Address,
+        input_action: Action,
+        gas_used: u64,
+        gas_limit: u64,
+    ) -> ActionResult {
         ActionResult {
             contract: contract,
             error: err.to_string(),
@@ -448,7 +674,13 @@ impl<B: Backend + 'static> VmRunner<B> {
         }
     }
 
-    fn action_result_from_success(input_action: Action, contract: Address, output_data: Vec<u8>, gas_used: u64, gas_limit: u64) -> ActionResult {
+    fn action_result_from_success(
+        input_action: Action,
+        contract: Address,
+        output_data: Vec<u8>,
+        gas_used: u64,
+        gas_limit: u64,
+    ) -> ActionResult {
         ActionResult {
             contract: contract,
             error: String::new(),
@@ -461,4 +693,3 @@ impl<B: Backend + 'static> VmRunner<B> {
         }
     }
 }
-

@@ -1,5 +1,5 @@
 use std::any::type_name;
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug};
 use std::slice;
 
 use wasmer::{Array, ValueType, WasmPtr};
@@ -67,21 +67,6 @@ pub fn read_region(memory: &wasmer::Memory, ptr: u32, max_length: usize) -> VmRe
 }
 
 
-/// maybe_read_region is like read_region, but gracefully handles null pointer (0) by returning None
-/// meant to be used where the argument is optional (like scan)
-pub fn maybe_read_region(
-    memory: &wasmer::Memory,
-    ptr: u32,
-    max_length: usize,
-) -> VmResult<Option<Vec<u8>>> {
-    if ptr == 0 {
-        Ok(None)
-    } else {
-        read_region(memory, ptr, max_length).map(Some)
-    }
-}
-
-
 /// A prepared and sufficiently large memory Region is expected at ptr that points to pre-allocated memory.
 ///
 /// Returns number of bytes written on success.
@@ -145,8 +130,6 @@ fn get_utf18_string(ptr: WasmPtr<u8, Array>, memory: &wasmer::Memory, str_len: u
     // TODO: benchmark the internals of this function: there is likely room for
     // micro-optimization here and this may be a fairly common function in user code.
     let view = memory.view::<u8>();
-
-    let base = ptr.offset() as usize;
 
     let mut vec: Vec<u8> = Vec::with_capacity(str_len as usize);
     let base = ptr.offset() as usize;

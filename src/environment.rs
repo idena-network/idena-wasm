@@ -1,16 +1,14 @@
 use std::borrow::{Borrow, BorrowMut};
-use std::error::Error;
 use std::ptr::NonNull;
 use std::sync::{Arc, RwLock};
 
 use wasmer::{HostEnvInitError, Instance, Memory, Val, WasmerEnv};
 use wasmer_middlewares::metering::{get_remaining_points, MeteringPoints, set_remaining_points};
 
-use crate::{errors, unwrap_or_return};
+use crate::{unwrap_or_return};
 use crate::backend::{Backend, BackendError, BackendResult};
 use crate::costs::BASE_PROMISE_COST;
 use crate::errors::VmError;
-use crate::imports::{process_gas_info, write_to_contract};
 use crate::memory::VmResult;
 use crate::types::{Address, DeployContractAction, IDNA, ReadShardedDataAction};
 use crate::types::{Action, FunctionCallAction, Promise, PromiseResult, TransferAction};
@@ -243,12 +241,6 @@ impl<B: Backend> Env<B> {
             result = data.pending_promises.to_vec()
         });
         result
-    }
-
-    pub fn clear_promises(&self) {
-        self.with_context_data_mut(|data| {
-            data.pending_promises = Vec::new()
-        });
     }
 }
 

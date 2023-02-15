@@ -9,7 +9,6 @@ pub const ACTION_READ_IDENTITY: u8 = 5;
 pub type IDNA = Vec<u8>;
 
 pub type Address = Vec<u8>;
-pub type Hash = [u8; 32];
 pub type Gas = u64;
 
 #[derive(Clone, Debug)]

@@ -1,8 +1,5 @@
 use std::fmt;
 
-use crate::errors::VmError;
-use crate::exports::UnmanagedVector;
-
 /// This enum gives names to the status codes returned from Go callbacks to Rust.
 ///
 /// The go code will return one of these variants when returning.
@@ -53,39 +50,6 @@ impl fmt::Display for GoResult {
             GoResult::OutOfGas => write!(f, "OutOfGas"),
             GoResult::Other => write!(f, "Other Error"),
             GoResult::User => write!(f, "User Error"),
-        }
-    }
-}
-
-impl GoResult {
-    /// This converts a GoResult to a `Result<(), BackendError>`, using a fallback error message for some cases.
-    /// If it is GoResult::User the error message will be returned to the contract.
-    /// Otherwise, the returned error will trigger a trap in the VM and abort contract execution immediately.
-    ///
-    /// Safety: this reads data from an externally provided buffer and assumes valid utf-8 encoding
-    /// Only call if you trust the code that provides `error_msg` to be correct.
-    pub unsafe fn into_ffi_result<F>(
-        self,
-        error_msg: UnmanagedVector,
-        default: F,
-    ) -> Result<(), VmError>
-        where
-            F: Fn() -> String,
-    {
-        let read_error_msg = || -> String {
-            match error_msg.consume() {
-                Some(data) => String::from_utf8_lossy(&data).into(),
-                None => default(),
-            }
-        };
-
-        match self {
-            GoResult::Ok => Ok(()),
-            GoResult::Panic => Err(VmError::custom("foreign_panic")),
-            GoResult::BadArgument => Err(VmError::custom("bad_argument")),
-            GoResult::OutOfGas => Err(VmError::custom("out_of_gas()")),
-            GoResult::Other => Err(VmError::custom("unknown(read_error_msg")),
-            GoResult::User => Err(VmError::custom("user_err(read_error_msg")),
         }
     }
 }
