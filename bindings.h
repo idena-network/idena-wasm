@@ -11,13 +11,13 @@
 
 #define MAX_RETURN_VALUE_SIZE (64 * 1024)
 
-#define BASE_PROMISE_COST 1000
+#define BASE_PROMISE_COST 100000
 
-#define BASE_DEPLOY_COST 30000
+#define BASE_DEPLOY_COST 3000000
 
-#define BASE_CALL_COST 3000
+#define BASE_CALL_COST 100000
 
-#define BASE_BYTES_TO_HEX_COST 1000
+#define BASE_BYTES_TO_HEX_COST 10000
 
 #define ACTION_FUNCTION_CALL 1
 
@@ -99,9 +99,7 @@ typedef struct GoApi_vtable {
   int32_t (*balance)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*block_seed)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*network_size)(const struct api_t*, uint64_t*, uint64_t*);
-  int32_t (*identity_state)(const struct api_t*, struct U8SliceView, uint64_t*, uint8_t*);
-  int32_t (*pub_key)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
-  int32_t (*burn_all)(const struct api_t*, uint64_t*);
+  int32_t (*burn)(const struct api_t*, struct U8SliceView, uint64_t*);
   int32_t (*epoch)(const struct api_t*, uint64_t*, uint16_t*);
   int32_t (*contract_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*move_to_stake)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
@@ -109,7 +107,6 @@ typedef struct GoApi_vtable {
   int32_t (*identity)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*caller)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
   int32_t (*original_caller)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
-  int32_t (*commit)(const struct api_t*);
   int32_t (*deduct_balance)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*add_balance)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*);
   int32_t (*contract)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
@@ -126,11 +123,12 @@ typedef struct GoApi_vtable {
   int32_t (*block_header)(const struct api_t*, uint64_t, uint64_t*, struct UnmanagedVector*);
   int32_t (*keccak256)(const struct api_t*, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
   int32_t (*global_state)(const struct api_t*, uint64_t*, struct UnmanagedVector*);
+  int32_t (*ecrecover)(const struct api_t*, struct U8SliceView, struct U8SliceView, uint64_t*, struct UnmanagedVector*);
 } GoApi_vtable;
 
 typedef struct GoApi {
   const struct api_t *state;
-  const struct gas_meter_t *gasMeter;
+  const struct gas_meter_t *gas_meter;
   struct GoApi_vtable vtable;
 } GoApi;
 
@@ -156,7 +154,6 @@ uint8_t execute(struct GoApi api,
                 uint64_t gas_limit,
                 uint64_t *gas_used,
                 struct UnmanagedVector *action_result,
-                struct UnmanagedVector *err_msg,
                 bool is_debug);
 
 uint8_t deploy(struct GoApi api,
@@ -166,5 +163,4 @@ uint8_t deploy(struct GoApi api,
                uint64_t gas_limit,
                uint64_t *gas_used,
                struct UnmanagedVector *action_result,
-               struct UnmanagedVector *err_msg,
                bool is_debug);

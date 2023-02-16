@@ -29,7 +29,7 @@ impl<B: Backend> Env<B> {
             backend: api,
             data: Arc::new(RwLock::new(ContextData::new())),
             promise_result: promise_res,
-            gas_limit : gas_limit
+            gas_limit : gas_limit,
         }
     }
 

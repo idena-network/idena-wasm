@@ -125,9 +125,6 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut UnmanagedVector, // result
     ) -> i32,
-    pub commit: extern "C" fn(
-        *const api_t,
-    ) -> i32,
     pub deduct_balance: extern "C" fn(
         *const api_t,
         U8SliceView, // amount
@@ -231,7 +228,14 @@ pub struct GoApi_vtable {
     pub global_state : extern "C" fn(
         *const api_t,
         *mut u64,
-        *mut UnmanagedVector, // keccak-256 hash of data
+        *mut UnmanagedVector,
+    ) -> i32,
+    pub ecrecover: extern "C" fn(
+        *const api_t,
+        U8SliceView, // data
+        U8SliceView, // signature
+        *mut u64,
+        *mut UnmanagedVector, // pubkey
     ) -> i32,
 }
 
@@ -697,6 +701,18 @@ impl Backend for apiWrapper {
         let go_result = (self.api.vtable.global_state)(self.api.state,  &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
         check_go_result!(go_result, used_gas, "global_state");
         let value = match data.consume() {
+            Some(v) => v,
+            None => Vec::new()
+        };
+        (Ok(value), used_gas)
+    }
+
+    fn ecrecover(&self, data: &[u8], sig: &[u8]) -> BackendResult<Vec<u8>> {
+        let mut used_gas = 0_u64;
+        let mut pubkey = UnmanagedVector::default();
+        let go_result = (self.api.vtable.ecrecover)(self.api.state, U8SliceView::new(Some(data)),U8SliceView::new(Some(sig)), &mut used_gas as *mut u64, &mut pubkey as *mut UnmanagedVector);
+        check_go_result!(go_result, used_gas, "ecrecover");
+        let value = match pubkey.consume() {
             Some(v) => v,
             None => Vec::new()
         };

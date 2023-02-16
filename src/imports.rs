@@ -12,6 +12,7 @@ const MAX_IDNA_SIZE: usize = 32;
 const MAX_STORAGE_VALUE_SIZE: usize = 128 * 1024;
 const MAX_STRING_SIZE: usize = 4 * 1024;
 const MAX_ARGS_SIZE: usize = 10 * 1024;
+const MAX_SIGNATURE_SIZE: usize = 65;
 pub const MAX_RETURN_VALUE_SIZE: usize = 64 * 1024;
 
 pub fn process_gas_info<B: Backend>(
@@ -456,6 +457,20 @@ pub fn burn<B: Backend>(env: &Env<B>, amount: u32) -> VmResult<()> {
     process_gas_info(env, gas)?;
     res?;
     Ok(())
+}
+
+
+pub fn ecrecover<B: Backend>(env: &Env<B>, data: u32, sig: u32) -> VmResult<u32> {
+    let data = read_region(&env.memory(), data, MAX_ARGS_SIZE)?;
+    let signature = read_region(&env.memory(), sig, MAX_SIGNATURE_SIZE)?;
+    set_left_gas_to_backend(env)?;
+    let pubkey = env.backend.ecrecover(&data, &signature);
+    process_gas_info(env, pubkey.1)?;
+    let pb = pubkey.0?;
+    if pb.is_empty() {
+        return Ok(0);
+    }
+    write_to_contract(env, &pb)
 }
 
 fn set_left_gas_to_backend<B: Backend>(env: &Env<B>) -> VmResult<()> {

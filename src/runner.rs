@@ -1,8 +1,9 @@
+#![allow(unused)]
 use std::ptr::NonNull;
 use std::sync::Arc;
 
 use indexmap::map::Iter;
-use protobuf::{Message};
+use protobuf::Message;
 use wasmer::{
     imports, BaseTunables, ChainableNamedResolver, CompilerConfig, ExportIndex,
     Function, Instance, Module, Pages, Singlepass, Store, Target,
@@ -22,11 +23,11 @@ use crate::imports::*;
 use crate::limiting_tunables::LimitingTunables;
 use crate::memory::{read_region, VmResult};
 use crate::proto::models::{InvocationContext as protoContext, ProtoArgs_Argument};
-use crate::types::PromiseResult::Failed;
 use crate::types::{
     Action, ActionResult, Address, DeployContractAction, FunctionCallAction, Gas,
-    InvocationContext, Promise, PromiseResult, ReadShardedDataAction, IDNA,
+    IDNA, InvocationContext, Promise, PromiseResult, ReadShardedDataAction,
 };
+use crate::types::PromiseResult::Failed;
 use crate::unwrap_or_action_res;
 
 pub struct VmRunner<B: Backend + 'static> {
@@ -61,7 +62,6 @@ impl<B: Backend + 'static> VmRunner<B> {
         args: protobuf::RepeatedField<ProtoArgs_Argument>,
     ) -> VmResult<Vec<Val>> {
         let params_cnt: usize;
-
         if self.is_debug {
             let exp_it: Iter<'_, String, ExportIndex> = info.exports.iter();
 
@@ -79,7 +79,6 @@ impl<B: Backend + 'static> VmRunner<B> {
             None => return Err(VmError::custom("method is not found")),
             _ => return Err(VmError::custom("method is not found")),
         };
-
         if params_cnt < args.len() {
             return Err(VmError::custom("too many arguments"));
         }
@@ -106,7 +105,7 @@ impl<B: Backend + 'static> VmRunner<B> {
         &self,
         code: Vec<u8>,
         promise_result: Option<PromiseResult>,
-    ) -> VmResult<(Env<B>, Module)> {
+    ) -> VmResult<(Env<B>, Module, Box<Instance>)> {
         let metering = Arc::new(Metering::new(self.gas_limit, cost_function));
         let mut compiler_config = Singlepass::default();
         compiler_config.push_middleware(metering);
@@ -154,6 +153,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             "gas_left" =>  Function::new_native_with_env(&store, env.clone(), gas_left),
             "balance" =>  Function::new_native_with_env(&store, env.clone(), balance),
             "burn" =>  Function::new_native_with_env(&store, env.clone(), burn),
+            "ecrecover" =>  Function::new_native_with_env(&store, env.clone(), ecrecover),
             }
         };
         let mut import_obj_debug = imports! {};
@@ -178,7 +178,7 @@ impl<B: Backend + 'static> VmRunner<B> {
 
         let instance_ptr = NonNull::from(wasmer_instance.as_ref());
         env.set_wasmer_instance(Some(instance_ptr));
-        Ok((env, module))
+        Ok((env, module, wasmer_instance))
     }
 
     pub fn apply_function_call(
@@ -446,7 +446,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             code: vec![], // drop code
         });
         let addr = self.contact_addr.clone();
-        let (env, module) = unwrap_or_action_res!(
+        let (env, module, instance) = unwrap_or_action_res!(
             self.build_env(code, None),
             input_action,
             *gas_used,
@@ -487,7 +487,7 @@ impl<B: Backend + 'static> VmRunner<B> {
                     return Err(VmError::custom(format!(
                         "not found required export: {}",
                         export
-                    )))
+                    )));
                 }
             }
         }
@@ -544,7 +544,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             method_name: method.to_string(),
         });
         let invocation_ctx = self.ctx.clone().unwrap_or_default();
-        let (env, module) = unwrap_or_action_res!(
+        let (env, module, instance) = unwrap_or_action_res!(
             self.build_env(code, invocation_ctx.promise_result),
             input_action,
             *gas_used,
