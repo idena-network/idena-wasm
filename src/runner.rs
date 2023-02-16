@@ -1,12 +1,11 @@
-#![allow(unused)]
 use std::ptr::NonNull;
 use std::sync::Arc;
 
 use indexmap::map::Iter;
 use protobuf::Message;
 use wasmer::{
-    imports, BaseTunables, ChainableNamedResolver, CompilerConfig, ExportIndex,
-    Function, Instance, Module, Pages, Singlepass, Store, Target,
+    BaseTunables, ChainableNamedResolver, CompilerConfig, ExportIndex, Function,
+    imports, Instance, Module, Pages, Singlepass, Store, Target,
     Val, Value,
 };
 use wasmer_engine_universal::Universal;
@@ -36,6 +35,7 @@ pub struct VmRunner<B: Backend + 'static> {
     pub gas_limit: Gas,
     ctx: Option<InvocationContext>,
     pub is_debug: bool,
+    _wasmer: Option<Box<Instance>>,
 }
 
 impl<B: Backend + 'static> VmRunner<B> {
@@ -52,6 +52,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             gas_limit,
             ctx,
             is_debug,
+            _wasmer: None,
         }
     }
     fn prepare_arguments(
@@ -102,10 +103,10 @@ impl<B: Backend + 'static> VmRunner<B> {
     }
 
     fn build_env(
-        &self,
+        &mut self,
         code: Vec<u8>,
         promise_result: Option<PromiseResult>,
-    ) -> VmResult<(Env<B>, Module, Box<Instance>)> {
+    ) -> VmResult<(Env<B>, Module)> {
         let metering = Arc::new(Metering::new(self.gas_limit, cost_function));
         let mut compiler_config = Singlepass::default();
         compiler_config.push_middleware(metering);
@@ -178,7 +179,8 @@ impl<B: Backend + 'static> VmRunner<B> {
 
         let instance_ptr = NonNull::from(wasmer_instance.as_ref());
         env.set_wasmer_instance(Some(instance_ptr));
-        Ok((env, module, wasmer_instance))
+        self._wasmer = Some(wasmer_instance);
+        Ok((env, module))
     }
 
     pub fn apply_function_call(
@@ -212,6 +214,24 @@ impl<B: Backend + 'static> VmRunner<B> {
             self.api.add_balance(dest.to_vec(), amount.to_vec());
         }
         ()
+    }
+    fn unused_promise_gas(&self, env: Env<B>) -> Gas {
+        let promises = env.get_promises();
+        let mut sum: Gas = 0;
+        let iter = promises.iter();
+        for p in iter {
+            match &p.action {
+                Action::None => {}
+                Action::DeployContract(d) => sum = sum.saturating_add(d.gas_limit),
+                Action::FunctionCall(c) => sum = sum.saturating_add(c.gas_limit),
+                Action::ReadShardedData(r) => sum = sum.saturating_add(match r {
+                    ReadShardedDataAction::ReadContractData(rcd) => rcd.gas_limit,
+                    ReadShardedDataAction::GetIdentity(gi) => gi.gas_limit,
+                }),
+                Action::Transfer(_) => {}
+            }
+        }
+        sum
     }
 
     pub fn execute_promises(&self, env: Env<B>) -> Vec<ActionResult> {
@@ -436,7 +456,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             };
         }
     }
-    pub fn deploy(&self, code: Vec<u8>, arg_bytes: &[u8], gas_used: &mut u64) -> ActionResult {
+    pub fn deploy(mut self, code: Vec<u8>, arg_bytes: &[u8], gas_used: &mut u64) -> ActionResult {
         *gas_used = BASE_DEPLOY_COST;
         let input_action = Action::DeployContract(DeployContractAction {
             gas_limit: self.gas_limit,
@@ -446,7 +466,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             code: vec![], // drop code
         });
         let addr = self.contact_addr.clone();
-        let (env, module, instance) = unwrap_or_action_res!(
+        let (env, module) = unwrap_or_action_res!(
             self.build_env(code, None),
             input_action,
             *gas_used,
@@ -500,6 +520,7 @@ impl<B: Backend + 'static> VmRunner<B> {
         *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
 
         if res.is_err() {
+            *gas_used = gas_used.saturating_sub(self.unused_promise_gas(env));
             return Ok(Self::action_result_from_err(
                 res.err().unwrap(),
                 self.contact_addr.clone(),
@@ -531,7 +552,7 @@ impl<B: Backend + 'static> VmRunner<B> {
     }
 
     pub fn execute(
-        self,
+        mut self,
         code: Vec<u8>,
         method: &String,
         arg_bytes: &[u8],
@@ -544,7 +565,7 @@ impl<B: Backend + 'static> VmRunner<B> {
             method_name: method.to_string(),
         });
         let invocation_ctx = self.ctx.clone().unwrap_or_default();
-        let (env, module, instance) = unwrap_or_action_res!(
+        let (env, module) = unwrap_or_action_res!(
             self.build_env(code, invocation_ctx.promise_result),
             input_action,
             *gas_used,
@@ -612,16 +633,15 @@ impl<B: Backend + 'static> VmRunner<B> {
                     output_data = read_region(&env.memory(), ptr as u32, MAX_RETURN_VALUE_SIZE)
                         .unwrap_or(vec![]);
                 }
-                *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
                 Ok(())
             }
             Err(err) => {
-                *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
                 Err(err)
             }
         };
-
+        *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
         if res.is_err() {
+            *gas_used = gas_used.saturating_sub(self.unused_promise_gas(env));
             return Ok(Self::action_result_from_err(
                 res.err().unwrap(),
                 self.contact_addr.clone(),
