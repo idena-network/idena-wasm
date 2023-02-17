@@ -55,7 +55,6 @@ pub trait Backend: Copy + Clone + Send {
     fn deduct_balance(&self, amount: IDNA) -> BackendResult<()>;
     fn add_balance(&self, to: Address, amount: IDNA) ->u64;
     fn own_addr(&self) -> BackendResult<Address>;
-    fn contract_code(&self, contract: Address) -> BackendResult<Vec<u8>>;
     fn contract_addr(&self, code:  &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address>;
     fn deploy(&self, code : &[u8], args: &[u8], nonce: &[u8], amount: &[u8], gas_limit: u64) -> BackendResult<ActionResult>;
     fn contract_addr_by_hash(&self, hash:  &[u8], args: &[u8], nonce: &[u8]) -> BackendResult<Address>;
@@ -159,10 +158,6 @@ impl Backend for MockBackend {
     }
 
     fn own_addr(&self) -> BackendResult<Address> {
-        todo!()
-    }
-
-    fn contract_code(&self, contract: Address) -> BackendResult<Vec<u8>> {
         todo!()
     }
 

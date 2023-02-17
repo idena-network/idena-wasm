@@ -54,13 +54,6 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut i64, // result output
     ) -> i32,
-    pub send: extern "C" fn(
-        *const api_t,
-        U8SliceView, // to
-        U8SliceView, // amount
-        *mut u64,
-        *mut UnmanagedVector, // error
-    ) -> i32,
     pub min_fee_per_gas: extern "C" fn(
         *const api_t,
         *mut u64,
@@ -90,24 +83,6 @@ pub struct GoApi_vtable {
         *const api_t,
         *mut u64,
         *mut u16,
-    ) -> i32,
-    pub contract_stake: extern "C" fn(
-        *const api_t,
-        U8SliceView, // addr
-        *mut u64,
-        *mut UnmanagedVector, // result
-    ) -> i32,
-    pub move_to_stake: extern "C" fn(
-        *const api_t,
-        U8SliceView, // amount
-        *mut u64,
-        *mut UnmanagedVector, // output error
-    ) -> i32,
-    pub delegatee: extern "C" fn(
-        *const api_t,
-        U8SliceView, // addr
-        *mut u64,
-        *mut UnmanagedVector, // result
     ) -> i32,
     pub identity: extern "C" fn(
         *const api_t,
@@ -139,12 +114,6 @@ pub struct GoApi_vtable {
     ) -> i32,
     pub contract: extern "C" fn(
         *const api_t,
-        *mut u64,
-        *mut UnmanagedVector, // result
-    ) -> i32,
-    pub contract_code: extern "C" fn(
-        *const api_t,
-        U8SliceView, // addr
         *mut u64,
         *mut UnmanagedVector, // result
     ) -> i32,
@@ -571,18 +540,6 @@ impl Backend for apiWrapper {
         let mut data = UnmanagedVector::default();
         let go_result = (self.api.vtable.contract)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
         check_go_result!(go_result, used_gas, "own_addr");
-        let d = match data.consume() {
-            Some(v) => v,
-            None => Vec::new()
-        };
-        (Ok(d), used_gas)
-    }
-
-    fn contract_code(&self, contract: Address) -> BackendResult<Vec<u8>> {
-        let mut used_gas = 0_u64;
-        let mut data = UnmanagedVector::default();
-        let go_result = (self.api.vtable.contract_code)(self.api.state, U8SliceView::new(Some(&contract)), &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
-        check_go_result!(go_result, used_gas, "contract_code");
         let d = match data.consume() {
             Some(v) => v,
             None => Vec::new()
