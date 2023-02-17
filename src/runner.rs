@@ -215,20 +215,28 @@ impl<B: Backend + 'static> VmRunner<B> {
         }
         ()
     }
+
+    fn get_gas_of_action(&self, action : &Action) -> Gas {
+        return match action {
+            Action::None => 0,
+            Action::DeployContract(d) => d.gas_limit,
+            Action::FunctionCall(c) => c.gas_limit,
+            Action::ReadShardedData(r) =>(match r {
+                ReadShardedDataAction::ReadContractData(rcd) => rcd.gas_limit,
+                ReadShardedDataAction::GetIdentity(gi) => gi.gas_limit,
+            }),
+            Action::Transfer(_) => 0
+        }
+    }
+
     fn unused_promise_gas(&self, env: Env<B>) -> Gas {
         let promises = env.get_promises();
         let mut sum: Gas = 0;
         let iter = promises.iter();
         for p in iter {
-            match &p.action {
-                Action::None => {}
-                Action::DeployContract(d) => sum = sum.saturating_add(d.gas_limit),
-                Action::FunctionCall(c) => sum = sum.saturating_add(c.gas_limit),
-                Action::ReadShardedData(r) => sum = sum.saturating_add(match r {
-                    ReadShardedDataAction::ReadContractData(rcd) => rcd.gas_limit,
-                    ReadShardedDataAction::GetIdentity(gi) => gi.gas_limit,
-                }),
-                Action::Transfer(_) => {}
+            sum = sum.saturating_add(self.get_gas_of_action(&p.action));
+            if p.action_callback.is_some() {
+                sum = sum.saturating_add(self.get_gas_of_action(&p.action_callback.as_ref().unwrap()));
             }
         }
         sum
