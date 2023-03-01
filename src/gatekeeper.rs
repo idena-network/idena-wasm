@@ -48,7 +48,7 @@ pub struct Gatekeeper {
 impl Gatekeeper {
     /// Creates a new Gatekeeper with a custom config.
     ///
-    /// A costum configuration is potentially dangerous (non-final Wasm proposals, floats in SIMD operation).
+    /// A custom configuration is potentially dangerous (non-final Wasm proposals, floats in SIMD operation).
     /// For this reason, only [`Gatekeeper::default()`] is public.
     fn new(config: GatekeeperConfig) -> Self {
         Self { config }
@@ -485,7 +485,24 @@ impl FunctionMiddleware for FunctionGatekeeper {
             | Operator::F64x2ConvertLowI32x4S
             | Operator::F64x2ConvertLowI32x4U
             | Operator::F32x4DemoteF64x2Zero
-            | Operator::F64x2PromoteLowF32x4 => {
+            | Operator::F64x2PromoteLowF32x4
+            | Operator::I8x16RelaxedSwizzle
+            | Operator::I32x4RelaxedTruncSatF32x4S
+            | Operator::I32x4RelaxedTruncSatF32x4U
+            | Operator::I32x4RelaxedTruncSatF64x2SZero
+            | Operator::I32x4RelaxedTruncSatF64x2UZero
+            | Operator::F32x4Fma
+            | Operator::F32x4Fms
+            | Operator::F64x2Fma
+            | Operator::F64x2Fms
+            | Operator::I8x16LaneSelect
+            | Operator::I16x8LaneSelect
+            | Operator::I32x4LaneSelect
+            | Operator::I64x2LaneSelect
+            | Operator::F32x4RelaxedMin
+            | Operator::F32x4RelaxedMax
+            | Operator::F64x2RelaxedMin
+            | Operator::F64x2RelaxedMax => {
                 if self.config.allow_feature_simd {
                     state.push_operator(operator);
                     Ok(())
@@ -656,7 +673,7 @@ impl FunctionMiddleware for FunctionGatekeeper {
             | Operator::Catch { .. }
             | Operator::Throw { .. }
             | Operator::Rethrow { .. }
-            | Operator::Unwind { .. }
+            // | Operator::Unwind { .. }
             | Operator::Delegate { .. }
             | Operator::CatchAll => {
                 if self.config.allow_feature_exception_handling {

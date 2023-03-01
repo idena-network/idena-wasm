@@ -221,10 +221,10 @@ impl<B: Backend + 'static> VmRunner<B> {
             Action::None => 0,
             Action::DeployContract(d) => d.gas_limit,
             Action::FunctionCall(c) => c.gas_limit,
-            Action::ReadShardedData(r) =>(match r {
+            Action::ReadShardedData(r) => match r {
                 ReadShardedDataAction::ReadContractData(rcd) => rcd.gas_limit,
                 ReadShardedDataAction::GetIdentity(gi) => gi.gas_limit,
-            }),
+            },
             Action::Transfer(_) => 0
         }
     }
