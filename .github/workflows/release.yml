@@ -34,7 +34,7 @@ jobs:
             os: ubuntu-latest
             artifact_name: 'libidena_wasm_darwin_aarch64'
             target: aarch64-unknown-linux-gnu
-      container: ${{ matrix.container }}
+    container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v3
 
