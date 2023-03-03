@@ -4,9 +4,8 @@ use std::sync::Arc;
 use indexmap::map::Iter;
 use protobuf::Message;
 use wasmer::{
-    BaseTunables, ChainableNamedResolver, CompilerConfig, ExportIndex, Function,
-    imports, Instance, Module, Pages, Singlepass, Store, Target,
-    Val, Value,
+    imports, BaseTunables, ChainableNamedResolver, CompilerConfig, ExportIndex, Function, Instance,
+    Module, Pages, Singlepass, Store, Target, Val, Value,
 };
 use wasmer_engine_universal::Universal;
 use wasmer_middlewares::Metering;
@@ -22,11 +21,11 @@ use crate::imports::*;
 use crate::limiting_tunables::LimitingTunables;
 use crate::memory::{read_region, VmResult};
 use crate::proto::models::{InvocationContext as protoContext, ProtoArgs_Argument};
+use crate::types::PromiseResult::Failed;
 use crate::types::{
     Action, ActionResult, Address, DeployContractAction, FunctionCallAction, Gas,
-    IDNA, InvocationContext, Promise, PromiseResult, ReadShardedDataAction,
+    InvocationContext, Promise, PromiseResult, ReadShardedDataAction, IDNA,
 };
-use crate::types::PromiseResult::Failed;
 use crate::unwrap_or_action_res;
 
 pub struct VmRunner<B: Backend + 'static> {
@@ -216,17 +215,19 @@ impl<B: Backend + 'static> VmRunner<B> {
         ()
     }
 
-    fn get_gas_of_action(&self, action : &Action) -> Gas {
+    fn get_gas_of_action(&self, action: &Action) -> Gas {
         return match action {
             Action::None => 0,
             Action::DeployContract(d) => d.gas_limit,
             Action::FunctionCall(c) => c.gas_limit,
-            Action::ReadShardedData(r) =>(match r {
-                ReadShardedDataAction::ReadContractData(rcd) => rcd.gas_limit,
-                ReadShardedDataAction::GetIdentity(gi) => gi.gas_limit,
-            }),
-            Action::Transfer(_) => 0
-        }
+            Action::ReadShardedData(r) => {
+                match r {
+                    ReadShardedDataAction::ReadContractData(rcd) => rcd.gas_limit,
+                    ReadShardedDataAction::GetIdentity(gi) => gi.gas_limit,
+                }
+            }
+            Action::Transfer(_) => 0,
+        };
     }
 
     fn unused_promise_gas(&self, env: Env<B>) -> Gas {
@@ -236,7 +237,8 @@ impl<B: Backend + 'static> VmRunner<B> {
         for p in iter {
             sum = sum.saturating_add(self.get_gas_of_action(&p.action));
             if p.action_callback.is_some() {
-                sum = sum.saturating_add(self.get_gas_of_action(&p.action_callback.as_ref().unwrap()));
+                sum = sum
+                    .saturating_add(self.get_gas_of_action(&p.action_callback.as_ref().unwrap()));
             }
         }
         sum
@@ -643,9 +645,7 @@ impl<B: Backend + 'static> VmRunner<B> {
                 }
                 Ok(())
             }
-            Err(err) => {
-                Err(err)
-            }
+            Err(err) => Err(err),
         };
         *gas_used = self.gas_limit.saturating_sub(env.get_gas_left());
         if res.is_err() {

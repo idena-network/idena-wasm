@@ -12,12 +12,12 @@ crate-type = ["staticlib"]
 byteorder = "1.2"
 anyhow = "1.0"
 wat = "1.0"
-errno = "0.2"
+errno = "0.2.8"
 thiserror = "1.0"
-wasmer = { version = "2.1.0", default-features = false, features = ["cranelift", "universal", "singlepass"] }
-wasmer-types = "2.1.1"
-wasmer-middlewares = { version = "2.1.0" }
-wasmer-engine-universal = { version = "2.1.0" }
+wasmer = { version = "2.3.0", default-features = false, features = ["cranelift", "universal", "singlepass"] }
+wasmer-types = "2.3.0"
+wasmer-middlewares = { version = "2.3.0" }
+wasmer-engine-universal = { version = "2.3.0" }
 loupe = "0.1.3"
 protobuf = "2.27.1"
 indexmap = "1.7.0"
