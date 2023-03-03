@@ -13,8 +13,28 @@ jobs:
       BINARY_NAME: libidena_wasm.a
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        os: [ macos-latest, ubuntu-latest, windows-latest ]
+        include:
+          - build: linux-x64
+            os: ubuntu-latest
+            artifact_name: 'libidena_wasm_linux_amd64'
+          - build: macos-x64
+            os: macos-11
+            artifact_name: 'libidena_wasm_darwin_amd64'
+          - build: macos-arm64
+            os: macos-11.0
+            target: aarch64-apple-darwin
+            artifact_name: 'libidena_wasm_darwin_arm64'
+          - build: windows-x64
+            os: windows-2019
+            artifact_name: 'libidena_wasm_windows_amd64'
+            target: x86_64-pc-windows-gnu
+          - build: linux-aarch64
+            os: ubuntu-latest
+            artifact_name: 'libidena_wasm_darwin_aarch64'
+            target: aarch64-unknown-linux-gnu
+      container: ${{ matrix.container }}
     steps:
       - uses: actions/checkout@v3
 
@@ -22,11 +42,13 @@ jobs:
         if: matrix.os != 'windows-latest'
         with:
           toolchain: stable
+          target: ${{ matrix.target }}
 
       - uses: actions-rs/toolchain@v1
         if: matrix.os == 'windows-latest'
         with:
           toolchain: stable-x86_64-pc-windows-gnu
+          target: ${{ matrix.target }}
 
       - uses: actions-rs/cargo@v1
         if: matrix.os == 'windows-latest'
@@ -41,38 +63,11 @@ jobs:
           command: build
           args: --release --all-features
 
-      - name: Get tag
-        id: tag
-        uses: dawidd6/action-get-tag@v1
-      - name: Get asset name
-        id: asset
-        run: |
-          gitTag=${{ steps.tag.outputs.tag }}
-          tag=${gitTag:1}
-          echo "GIT_TAG=${tag}" >> $GITHUB_ENV
-
       - name: Rename output file
-        if: matrix.os == 'ubuntu-latest'
         run: |
-          asset_name="target/release/libidena_wasm_linux-${GIT_TAG}.a"
+          asset_name=${{ matrix.artifact_name }}
           mv target/release/${BINARY_NAME} ${asset_name}
           echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
-
-      - name: Rename output file
-        if: matrix.os == 'windows-latest'
-        run: |
-          asset_name="target/release/libidena_wasm_win-${GIT_TAG}.a"
-          ls target/release
-          mv target/release/${BINARY_NAME} ${asset_name}
-          echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
-
-      - name: Rename output file
-        if: matrix.os == 'macos-latest'
-        run: |
-          asset_name="target/release/libidena_wasm_mac-${GIT_TAG}.a"
-          mv target/release/${BINARY_NAME} ${asset_name}
-          echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
-
       - name: Release
         uses: softprops/action-gh-release@v1
         env:
