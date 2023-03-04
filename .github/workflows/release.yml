@@ -18,13 +18,13 @@ jobs:
         include:
           - build: linux-x64
             os: ubuntu-latest
-            artifact_name: 'libidena_wasm_linux_amd64'
+            artifact_name: 'libidena_wasm_linux_amd64.a'
           - build: macos-x64
             os: macos-latest
-            artifact_name: 'libidena_wasm_darwin_amd64'
+            artifact_name: 'libidena_wasm_darwin_amd64.a'
           - build: windows-x64
             os: windows-latest
-            artifact_name: 'libidena_wasm_windows_amd64'
+            artifact_name: 'libidena_wasm_windows_amd64.a'
             target: x86_64-pc-windows-gnu
     container: ${{ matrix.container }}
     steps:

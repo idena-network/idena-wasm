@@ -31,8 +31,8 @@ jobs:
           PKG_CONFIG_ALLOW_CROSS: true
       - name: Rename output file
         run: |
-          asset_name=libidena_wasm_linux_aarch64
-          mv target/aarch64-unknown-linux-gnu/release/${BINARY_NAME} ${asset_name}
+          asset_name=libidena_wasm_linux_aarch64.a
+          cp target/aarch64-unknown-linux-gnu/release/${BINARY_NAME} ${asset_name}
           echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
       - name: Release
         uses: softprops/action-gh-release@v1
