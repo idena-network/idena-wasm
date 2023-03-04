@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  pull_request:
+defaults:
+  run:
+    shell: bash
+jobs:
+  linux_aarch64:
+    name: Linux aarch64
+    runs-on: ubuntu-latest
+    env:
+      BINARY_NAME: libidena_wasm.a
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          target: aarch64-unknown-linux-gnu
+      - name: Build cross image
+        run: |
+          docker build -t idena-wasm/aarch64 ${GITHUB_WORKSPACE}/.github/cross-linux-aarch64/
+        env:
+          CROSS_DOCKER_IN_DOCKER: true
+      - name: Build idena-wasm binary
+        run: |
+          ${CARGO_BINARY} build --target=aarch64-unknown-linux-gnu --release
+        env:
+          CARGO_BINARY: docker run -v /var/run/docker.sock:/var/run/docker.sock -v ${{ github.workspace }}:/project -w /project idena-wasm/aarch64 cross
+          CROSS_DOCKER_IN_DOCKER: true
+          PKG_CONFIG_PATH: /usr/lib/aarch64-linux-gnu/pkgconfig
+          PKG_CONFIG_ALLOW_CROSS: true
+      - name: Rename output file
+        run: |
+          asset_name=libidena_wasm_linux_aarch64
+          mv target/release/${BINARY_NAME} ${asset_name}
+          echo "ASSET_NAME=${asset_name}" >> $GITHUB_ENV
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          files: ${{ env.ASSET_NAME }}
