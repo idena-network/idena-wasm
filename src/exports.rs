@@ -1,4 +1,5 @@
 use std::{mem, slice};
+
 use protobuf::Message;
 
 use crate::{check_go_result, proto};
@@ -6,7 +7,7 @@ use crate::args::convert_args;
 use crate::backend::{Backend, BackendError, BackendResult};
 use crate::costs::{BASE_CALL_COST, BASE_DEPLOY_COST};
 use crate::errors::VmError;
-use crate::memory::{ByteSliceView};
+use crate::memory::ByteSliceView;
 use crate::runner::VmRunner;
 use crate::types::{Action, ActionResult, Address, IDNA, InvocationContext};
 
@@ -194,7 +195,7 @@ pub struct GoApi_vtable {
         *mut u64,
         *mut UnmanagedVector, // keccak-256 hash of data
     ) -> i32,
-    pub global_state : extern "C" fn(
+    pub global_state: extern "C" fn(
         *const api_t,
         *mut u64,
         *mut UnmanagedVector,
@@ -431,7 +432,7 @@ impl Backend for apiWrapper {
         (Ok(network_size), used_gas)
     }
 
-    fn burn(&self, amount : IDNA) -> BackendResult<()> {
+    fn burn(&self, amount: IDNA) -> BackendResult<()> {
         let mut used_gas = 0_u64;
         let go_result = (self.api.vtable.burn)(self.api.state, U8SliceView::new(Some(&amount)), &mut used_gas as *mut u64);
         check_go_result!(go_result, used_gas, "burn");
@@ -505,11 +506,11 @@ impl Backend for apiWrapper {
         (Ok(d), used_gas)
     }
 
-   /* fn commit(&self) -> BackendResult<()> {
-        let go_result = (self.api.vtable.commit)(self.api.state);
-        check_go_result!(go_result, 0, "commit");
-        (Ok(()), 0)
-    }*/
+    /* fn commit(&self) -> BackendResult<()> {
+         let go_result = (self.api.vtable.commit)(self.api.state);
+         check_go_result!(go_result, 0, "commit");
+         (Ok(()), 0)
+     }*/
 
     fn deduct_balance(&self, amount: IDNA) -> BackendResult<()> {
         let mut err = UnmanagedVector::default();
@@ -655,7 +656,7 @@ impl Backend for apiWrapper {
     fn global_state(&self) -> BackendResult<Vec<u8>> {
         let mut used_gas = 0_u64;
         let mut data = UnmanagedVector::default();
-        let go_result = (self.api.vtable.global_state)(self.api.state,  &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
+        let go_result = (self.api.vtable.global_state)(self.api.state, &mut used_gas as *mut u64, &mut data as *mut UnmanagedVector);
         check_go_result!(go_result, used_gas, "global_state");
         let value = match data.consume() {
             Some(v) => v,
@@ -667,7 +668,7 @@ impl Backend for apiWrapper {
     fn ecrecover(&self, data: &[u8], sig: &[u8]) -> BackendResult<Vec<u8>> {
         let mut used_gas = 0_u64;
         let mut pubkey = UnmanagedVector::default();
-        let go_result = (self.api.vtable.ecrecover)(self.api.state, U8SliceView::new(Some(data)),U8SliceView::new(Some(sig)), &mut used_gas as *mut u64, &mut pubkey as *mut UnmanagedVector);
+        let go_result = (self.api.vtable.ecrecover)(self.api.state, U8SliceView::new(Some(data)), U8SliceView::new(Some(sig)), &mut used_gas as *mut u64, &mut pubkey as *mut UnmanagedVector);
         check_go_result!(go_result, used_gas, "ecrecover");
         let value = match pubkey.consume() {
             Some(v) => v,
@@ -725,8 +726,12 @@ fn do_execute(api: GoApi, code: ByteSliceView,
     if ctx_bytes.len() > 0 {
         ctx = proto::models::InvocationContext::parse_from_bytes(ctx_bytes).unwrap_or_default().into()
     }
-    VmRunner::new(apiWrapper::new(api), addr.to_vec(), gas_limit, Some(ctx), is_debug)
-        .execute(data, &method, arguments_bytes, gas_used)
+    std::panic::catch_unwind(|| {
+        VmRunner::new(apiWrapper::new(api), addr.to_vec(), gas_limit, Some(ctx), is_debug)
+            .execute(data, &method, arguments_bytes, &mut gas_used.clone())
+    }).unwrap_or_else(|_| {
+        action_result_from_err(VmError::custom("transaction should be skipped"), addr, gas_limit, *gas_used)
+    })
 }
 
 fn action_result_from_err(err: VmError, contract_addr: &[u8], gas_limit: u64, gas_used: u64) -> ActionResult {
@@ -769,8 +774,12 @@ fn do_deploy(api: GoApi, code: ByteSliceView,
     if is_debug {
         println!("deploy code: code len={}, args={:?}, gas limit={}", data.len(), args, gas_limit);
     }
-    VmRunner::new(apiWrapper::new(api), addr.to_vec(), gas_limit, None, is_debug)
-        .deploy(data, arguments_bytes, gas_used)
+    std::panic::catch_unwind(|| {
+        VmRunner::new(apiWrapper::new(api), addr.to_vec(), gas_limit, None, is_debug)
+            .deploy(data, arguments_bytes, &mut gas_used.clone())
+    }).unwrap_or_else(|_| {
+        action_result_from_err(VmError::custom("transaction should be skipped"), addr, gas_limit, *gas_used)
+    })
 }
 
 
